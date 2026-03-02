@@ -84,7 +84,12 @@ export async function scheduleClassReminders(classItem: ClassItem): Promise<void
     if (notifyHour < 0) notifyHour += 24;
   }
 
-  const daysOfWeek: number[] = JSON.parse(classItem.daysOfWeek as unknown as string || '[]');
+  // `classItem.daysOfWeek` is an array of numbers, but due to earlier DB storage it 
+  // might come out of the SQLite layer as a parsed array OR a string depending on 
+  // how the row mapping handles it. Ensure we have an array:
+  const daysOfWeek: number[] = Array.isArray(classItem.daysOfWeek) 
+    ? classItem.daysOfWeek 
+    : JSON.parse((classItem.daysOfWeek as unknown as string) || '[]');
 
   for (const day of daysOfWeek) {
     const triggerWeekday = day + 1; // expo uses 1=Sun
@@ -180,6 +185,26 @@ export async function cancelAssignmentReminders(assignmentId: string): Promise<v
       `assignment-${assignmentId}-${offset}`
     ).catch(() => {});
   }
+}
+
+/**
+ * Trigger an immediate notification when a new assignment is found during an LMS sync
+ */
+export async function notifyNewAssignment(title: string, courseName: string): Promise<void> {
+  const hasPermission = await requestNotificationPermissions();
+  if (!hasPermission) return;
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: `new-assignment-${Date.now()}`,
+    content: {
+      title: '🆕 New Assignment',
+      body: `${title} • ${courseName}`,
+      data: { type: 'new-assignment' },
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: 'assignment-deadlines' }),
+    },
+    trigger: null, // Immediate
+  });
 }
 
 /**

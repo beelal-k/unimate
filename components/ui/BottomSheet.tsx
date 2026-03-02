@@ -2,7 +2,7 @@
 // Full-screen capable bottom sheet above everything, keyboard-friendly
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Dimensions, Pressable, Keyboard, Platform, Modal } from 'react-native';
+import { View, Dimensions, Pressable, Keyboard, Platform, Modal, KeyboardAvoidingView } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -35,27 +35,10 @@ export function BottomSheet({
 }: BottomSheetProps) {
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const backdropOpacity = useSharedValue(0);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  useEffect(() => {
-    const showSub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => setKeyboardHeight(e.endCoordinates.height)
-    );
-    const hideSub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setKeyboardHeight(0)
-    );
-    return () => { showSub.remove(); hideSub.remove(); };
-  }, []);
-
   const baseHeight = SCREEN_HEIGHT * snapPoint;
-  const sheetHeight = isFullScreen
-    ? SCREEN_HEIGHT * 0.95
-    : keyboardHeight > 0
-      ? Math.min(SCREEN_HEIGHT * 0.9, baseHeight + keyboardHeight)
-      : baseHeight;
+  const sheetHeight = isFullScreen ? SCREEN_HEIGHT * 0.95 : baseHeight;
 
   useEffect(() => {
     if (visible) {
@@ -133,38 +116,40 @@ export function BottomSheet({
           />
         </Pressable>
 
-        {/* Sheet */}
-        <GestureDetector gesture={panGesture}>
-            <Animated.View
-              style={[
-                {
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: sheetHeight,
-                  backgroundColor: '#FFFFFF',
-                  borderTopLeftRadius: isFullScreen ? 0 : 16,
-                  borderTopRightRadius: isFullScreen ? 0 : 16,
-                },
-                sheetStyle,
-              ]}
-            >
-            {/* Handle */}
-            <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 12 }}>
-              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#D0D0D0' }} />
-            </View>
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
-              keyboardShouldPersistTaps="always"
-              showsVerticalScrollIndicator={false}
-            >
-              {children}
-            </ScrollView>
-          </Animated.View>
-        </GestureDetector>
-      </GestureHandlerRootView>
-    </Modal>
+          {/* Sheet */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
+            pointerEvents="box-none"
+          >
+            <GestureDetector gesture={panGesture}>
+              <Animated.View
+                style={[
+                  {
+                    height: sheetHeight,
+                    backgroundColor: '#FFFFFF',
+                    borderTopLeftRadius: isFullScreen ? 0 : 16,
+                    borderTopRightRadius: isFullScreen ? 0 : 16,
+                  },
+                  sheetStyle,
+                ]}
+              >
+                {/* Handle */}
+                <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 12 }}>
+                  <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#D0D0D0' }} />
+                </View>
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {children}
+                </ScrollView>
+              </Animated.View>
+            </GestureDetector>
+          </KeyboardAvoidingView>
+        </GestureHandlerRootView>
+      </Modal>
   );
 }

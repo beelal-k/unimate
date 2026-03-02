@@ -4,21 +4,19 @@
     "slug": "unimate",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/appstore.png",
     "userInterfaceStyle": "automatic",
     "scheme": "unimate",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/appstore.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F4F3E2"
     },
     "android": {
       "package": "com.unimate.app",
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#F4F3E2",
+        "foregroundImage": "./assets/playstore.png"
       },
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",

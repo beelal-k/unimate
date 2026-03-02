@@ -162,6 +162,9 @@ export const useLmsStore = create<LmsState>((set, get) => ({
       const now = new Date().toISOString();
       const courseNameMap = new Map(courses.map((c) => [c.id, c.fullname || c.shortname]));
 
+      const isFirstSync = get().items.length === 0;
+      const newAssignmentsToNotify: { title: string, courseName: string }[] = [];
+
       for (const a of assignments) {
         const existing = get().items.find((i) => i.moodleId === a.id && i.type === 'assignment');
         const status = computeStatus(a.duedate);
@@ -204,6 +207,10 @@ export const useLmsStore = create<LmsState>((set, get) => ({
             attachments: JSON.stringify(attachments),
             syncedAt: now,
           });
+          
+          if (!isFirstSync && status === 'upcoming') {
+            newAssignmentsToNotify.push({ title: a.name, courseName });
+          }
         }
       }
 
@@ -212,11 +219,18 @@ export const useLmsStore = create<LmsState>((set, get) => ({
 
       // Schedule notifications for upcoming assignments (lazy import to avoid module crash)
       try {
-        const { scheduleAssignmentReminders } = await import('../notifications');
+        const { scheduleAssignmentReminders, notifyNewAssignment } = await import('../notifications');
+        
+        // Schedule deadlines
         for (const item of mappedItems) {
           if (item.type === 'assignment' && item.status === 'upcoming' && item.dueDate) {
             scheduleAssignmentReminders(item.id, item.title, item.courseName, item.dueDate).catch(() => {});
           }
+        }
+        
+        // Notify user about newly discovered assignments right now
+        for (const newAssign of newAssignmentsToNotify) {
+          notifyNewAssignment(newAssign.title, newAssign.courseName).catch(() => {});
         }
       } catch {
         // Notifications not available, skip

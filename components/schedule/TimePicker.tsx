@@ -141,6 +141,7 @@ export function TimePicker({ label, value, onChange }: TimePickerProps) {
               style={{ maxHeight: 200 }}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ alignItems: 'center', gap: 2 }}
+              nestedScrollEnabled={true}
             >
               {HOURS.map((h) => (
                 <TimeValue
@@ -170,6 +171,7 @@ export function TimePicker({ label, value, onChange }: TimePickerProps) {
               style={{ maxHeight: 200 }}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ alignItems: 'center', gap: 2 }}
+              nestedScrollEnabled={true}
             >
               {MINUTES.map((m) => (
                 <TimeValue

@@ -4,7 +4,7 @@
 import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, Pressable, Alert, RefreshControl,
-  Modal, Image, Dimensions, FlatList,
+  Modal, Image, Dimensions, FlatList, TextInput as RNTextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import {
   FolderOpen, Plus, FolderPlus, Upload, Trash2, Edit3, X,
   MoveRight, ChevronRight, Home, FolderInput, Eye, Share2,
+  Search, ArrowDownAZ, CalendarDays,
 } from 'lucide-react-native';
 
 import { AnimatedScreen } from '../../components/ui/AnimatedScreen';
@@ -59,6 +60,10 @@ export default function FilesScreen() {
   const [newFolderName, setNewFolderName] = useState('');
   const [showFolderSheet, setShowFolderSheet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Search and Sort
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'date'>('date');
 
   // File actions bottom sheet
   const [showActionsSheet, setShowActionsSheet] = useState(false);
@@ -78,6 +83,34 @@ export default function FilesScreen() {
 
   const children = getCurrentChildren();
   const breadcrumbs = getBreadcrumbs();
+
+  const filteredChildren = useMemo(() => {
+    let result = children;
+    
+    // Search filtering
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      // If we are searching, we want to search all nodes, not just the current folder.
+      // But let's keep it to current folder for simplicity, or we could change this to search globally.
+      // For now, doing current folder search:
+      result = children.filter(node => node.name.toLowerCase().includes(lowerQuery));
+    }
+    
+    // Sorting
+    result = [...result].sort((a, b) => {
+      // Folders always first
+      if (a.type === 'folder' && b.type === 'file') return -1;
+      if (a.type === 'file' && b.type === 'folder') return 1;
+      
+      if (sortBy === 'name') {
+        return a.name.localeCompare(b.name);
+      } else {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+    });
+    
+    return result;
+  }, [children, searchQuery, sortBy]);
 
   useEffect(() => { loadNodes(); }, []);
 
@@ -262,9 +295,21 @@ export default function FilesScreen() {
               paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
             }}
           >
-            <Text style={{ fontSize: 32, fontFamily: 'Inter_700Bold', color: '#0A0A0A', letterSpacing: -0.5 }}>
-              Files
-            </Text>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F3F3', borderRadius: 12, paddingHorizontal: 12, height: 44, marginRight: isSelecting ? 12 : 0 }}>
+              <Search size={18} color="#A0A0A0" strokeWidth={2} />
+              <RNTextInput
+                placeholder="Search files..."
+                placeholderTextColor="#A0A0A0"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                style={{ flex: 1, height: 44, paddingHorizontal: 0, marginLeft: 8, fontSize: 15, fontFamily: 'Inter_400Regular', color: '#0A0A0A' }}
+              />
+              {searchQuery.length > 0 && (
+                <Pressable onPress={() => setSearchQuery('')} hitSlop={10}>
+                  <X size={16} color="#A0A0A0" />
+                </Pressable>
+              )}
+            </View>
             {isSelecting && (
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Pressable
@@ -287,6 +332,19 @@ export default function FilesScreen() {
                 </Pressable>
               </View>
             )}
+            
+            {!isSelecting && (
+              <Pressable
+                onPress={() => setSortBy(prev => prev === 'name' ? 'date' : 'name')}
+                style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#F3F3F3', alignItems: 'center', justifyContent: 'center', marginLeft: 12 }}
+              >
+                {sortBy === 'name' ? (
+                  <ArrowDownAZ size={20} color="#0A0A0A" strokeWidth={1.8} />
+                ) : (
+                  <CalendarDays size={20} color="#0A0A0A" strokeWidth={1.8} />
+                )}
+              </Pressable>
+            )}
           </View>
 
           {/* Breadcrumbs */}
@@ -297,7 +355,7 @@ export default function FilesScreen() {
           {/* Content */}
           {isLoading ? (
             <View style={{ paddingHorizontal: 20, paddingTop: 16 }}><SkeletonList count={5} /></View>
-          ) : children.length === 0 ? (
+          ) : filteredChildren.length === 0 ? (
             <ScrollView
               style={{ flex: 1 }}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 108 }}
@@ -305,16 +363,16 @@ export default function FilesScreen() {
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0A0A0A" />}
             >
               <EmptyState
-                icon={<FolderOpen size={64} color="#A0A0A0" strokeWidth={1.2} />}
-                title={currentFolderId ? 'Empty folder' : 'No files yet'}
-                description={currentFolderId ? 'Upload files or create subfolders.' : 'Upload PDFs, documents, and lecture slides.'}
-                actionLabel="Upload File"
-                onAction={handleUploadFile}
+                icon={searchQuery ? <Search size={64} color="#A0A0A0" strokeWidth={1.2} /> : <FolderOpen size={64} color="#A0A0A0" strokeWidth={1.2} />}
+                title={searchQuery ? 'No results found' : currentFolderId ? 'Empty folder' : 'No files yet'}
+                description={searchQuery ? `No files matching "${searchQuery}"` : currentFolderId ? 'Upload files or create subfolders.' : 'Upload PDFs, documents, and lecture slides.'}
+                actionLabel={searchQuery ? 'Clear Search' : 'Upload File'}
+                onAction={searchQuery ? () => setSearchQuery('') : handleUploadFile}
               />
             </ScrollView>
           ) : (
             <FlatList
-              data={children}
+              data={filteredChildren}
               keyExtractor={(node) => node.id}
               style={{ flex: 1 }}
               contentContainerStyle={{ paddingBottom: 108 }}
