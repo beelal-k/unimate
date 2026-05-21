@@ -1,4 +1,4 @@
-# 🎓 UniMate
+# 🎓 UniMate [You-nee-mate]
 
 *Note: This application was 100% vibe coded. ✨*
 
