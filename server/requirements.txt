@@ -1,0 +1,30 @@
+# FastAPI & Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+python-dotenv>=1.0.0
+
+# Background Tasks
+celery[redis]>=5.4.0
+redis>=5.2.0
+
+# Database (Turso)
+libsql-experimental>=0.0.50
+
+# HTTP Client
+httpx>=0.28.0
+
+# AI / Gemini
+google-genai>=1.0.0
+
+# File Processing
+pypdf>=5.1.0
+python-pptx>=1.0.0
+python-docx>=1.1.0
+
+# PDF Generation
+reportlab>=4.0.0
+
+# CORS
+starlette>=0.41.0
