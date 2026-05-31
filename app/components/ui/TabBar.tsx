@@ -9,17 +9,21 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Home, Calendar, BookOpen, FolderOpen, MessageCircle } from 'lucide-react-native';
+import { Home, Calendar, BookOpen, FolderOpen } from 'lucide-react-native';
 import { Springs } from '../../lib/theme';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+
+// Height of the interactive row (icons + labels), excluding the bottom safe-area inset.
+const TAB_BAR_CONTENT_HEIGHT = 58;
 
 const TABS = [
   { route: 'index', label: 'Home', Icon: Home },
   { route: 'schedule', label: 'Schedule', Icon: Calendar },
   { route: 'lms', label: 'LMS', Icon: BookOpen },
   { route: 'files', label: 'Files', Icon: FolderOpen },
-  { route: 'chat', label: 'Chat', Icon: MessageCircle },
+  // { route: 'chat', label: 'Chat', Icon: MessageCircle },
 ] as const;
 
 function TabItem({
@@ -53,8 +57,12 @@ function TabItem({
 
   return (
     <Pressable
-      onPressIn={() => { pressScale.value = withSpring(0.88, Springs.snappy); }}
-      onPressOut={() => { pressScale.value = withSpring(1, Springs.snappy); }}
+      onPressIn={() => {
+        pressScale.value = withSpring(0.88, Springs.snappy);
+      }}
+      onPressOut={() => {
+        pressScale.value = withSpring(1, Springs.snappy);
+      }}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onPress();
@@ -65,7 +73,12 @@ function TabItem({
         <Icon size={24} color={color} strokeWidth={isActive ? 2.2 : 1.8} />
         <Animated.View
           style={[
-            { width: 4, height: 4, borderRadius: 2, backgroundColor: '#0A0A0A' },
+            {
+              width: 4,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: '#0A0A0A',
+            },
             dotStyle,
           ]}
         />
@@ -88,6 +101,11 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   // Build a set of currently active route names for highlighting
   const activeRouteName = state.routes[state.index]?.name;
 
+  // Reserve space for the device's bottom inset (Android nav buttons / iOS home indicator)
+  // so the tab content never sits under the system navigation bar.
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 10);
+
   return (
     <View
       style={{
@@ -95,7 +113,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         bottom: 0,
         left: 0,
         right: 0,
-        height: 88,
+        height: TAB_BAR_CONTENT_HEIGHT + bottomInset,
       }}
     >
       <BlurView
@@ -104,11 +122,23 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         experimentalBlurMethod="dimezisBlurView"
         style={{
           ...StyleSheet.absoluteFillObject,
-          backgroundColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.92)' : undefined,
+          backgroundColor:
+            Platform.OS === 'android' ? 'rgba(255,255,255,0.92)' : undefined,
         }}
       />
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(0,0,0,0.06)' }} />
-      <View style={{ flex: 1, flexDirection: 'row', paddingBottom: 20 }}>
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: StyleSheet.hairlineWidth,
+          backgroundColor: 'rgba(0,0,0,0.06)',
+        }}
+      />
+      <View
+        style={{ flex: 1, flexDirection: 'row', paddingBottom: bottomInset }}
+      >
         {TABS.map((tab) => (
           <TabItem
             key={tab.route}

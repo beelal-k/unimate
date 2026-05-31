@@ -121,7 +121,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     let destUri = sourceUri;
     try {
       const { File, Directory, Paths } =
-        require('expo-file-system/next') as typeof import('expo-file-system/next');
+        require('expo-file-system') as typeof import('expo-file-system');
       const targetDir = new Directory(Paths.document, 'unimate-files');
       if (!targetDir.exists) targetDir.create();
 
@@ -187,7 +187,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
 
       if (node?.localUri) {
         try {
-          const { File } = require('expo-file-system/next') as typeof import('expo-file-system/next');
+          const { File } = require('expo-file-system') as typeof import('expo-file-system');
           new File(node.localUri).delete();
         } catch {}
       }

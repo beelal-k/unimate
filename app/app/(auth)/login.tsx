@@ -41,7 +41,13 @@ export default function LoginScreen() {
       cleanDomain = cleanDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
       await loginSequence(cleanDomain, username.trim(), password);
-      
+
+      // Ask for notification permission once, right after a successful login (non-blocking)
+      try {
+        const N = require('../../lib/notifications') as typeof import('../../lib/notifications');
+        N.requestNotificationPermissions().catch(() => {});
+      } catch {}
+
       showToast('Welcome to UniMate!', 'success');
       router.replace('/(tabs)');
     } catch (error: any) {

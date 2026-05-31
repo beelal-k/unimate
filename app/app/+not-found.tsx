@@ -1,4 +1,3 @@
-// app/+not-found.tsx
 // Catch-all route for unmatched paths (404s)
 
 import React from 'react';

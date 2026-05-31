@@ -25,3 +25,12 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local SQLite replica (libsql embedded replica — synced from Turso, never commit)
+*.db
+*.db-shm
+*.db-wal
+*.db-info
+
+# Redis dump
+dump.rdb

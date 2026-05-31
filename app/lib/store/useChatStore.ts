@@ -247,7 +247,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     for (const node of attachedNodes) {
       try {
         const { File: FSFile, Paths } =
-          require('expo-file-system/next') as typeof import('expo-file-system/next');
+          require('expo-file-system') as typeof import('expo-file-system');
 
         if (!Paths.info(node.localUri!).exists) {
           console.warn('[Chat] File not found:', node.localUri);

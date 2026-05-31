@@ -46,7 +46,13 @@ module.exports = {
                     backgroundColor: '#ffffff'
                 }
             ],
-            'expo-font'
+            'expo-font',
+            [
+                'expo-notifications',
+                {
+                    color: '#0A0A0A'
+                }
+            ]
         ],
         experiments: {
             typedRoutes: true

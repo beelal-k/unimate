@@ -18,6 +18,56 @@ Notifications.setNotificationHandler({
 });
 
 /**
+ * Read global reminder preferences (set on the Notifications settings screen).
+ * Falls back to sensible defaults if unset or unreadable.
+ */
+async function getReminderPrefs(): Promise<{
+  enabled: boolean;
+  assignmentMode: 'default' | 'daily' | 'off';
+  classLead: number | null;
+}> {
+  try {
+    const { readSetting } = require('./db/settings') as typeof import('./db/settings');
+    const [enabled, mode, lead] = await Promise.all([
+      readSetting('notif_reminders_enabled'),
+      readSetting('notif_assignment_default'),
+      readSetting('notif_class_lead'),
+    ]);
+    return {
+      enabled: enabled !== 'false',
+      assignmentMode: mode === 'daily' || mode === 'off' ? mode : 'default',
+      classLead: lead ? Number(lead) : null,
+    };
+  } catch {
+    return { enabled: true, assignmentMode: 'default', classLead: null };
+  }
+}
+
+/**
+ * Re-apply global reminder preferences across all upcoming assignments.
+ * Called when the user changes a setting on the Notifications screen.
+ */
+export async function applyReminderPreferences(): Promise<void> {
+  const prefs = await getReminderPrefs();
+
+  if (!prefs.enabled) {
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } catch {}
+    return;
+  }
+
+  const { items, isCourseEnabled } = useLmsStore.getState();
+  for (const item of items) {
+    if (item.type !== 'assignment' || item.isDone || item.status !== 'upcoming' || !item.dueDate) continue;
+    if (item.courseId && (!isCourseEnabled(item.courseId) || !isAssignmentRelevant(item.dueDate, item.status))) continue;
+    await scheduleAssignmentReminders(
+      item.id, item.title, item.courseId ?? undefined, item.courseName, item.dueDate,
+    ).catch(() => {});
+  }
+}
+
+/**
  * Setup Android notification channels
  */
 export async function setupNotificationChannel() {
@@ -144,8 +194,11 @@ export async function scheduleClassReminders(classItem: ClassItem): Promise<void
 
   await cancelClassReminders(classItem.id);
 
+  const prefs = await getReminderPrefs();
+  if (!prefs.enabled) return;
+
   const [hours, minutes] = classItem.startTime.split(':').map(Number);
-  const notifyMinutes = classItem.notifyMinutesBefore || 15;
+  const notifyMinutes = prefs.classLead ?? classItem.notifyMinutesBefore ?? 15;
 
   let notifyHour = hours;
   let notifyMinute = minutes - notifyMinutes;
@@ -212,8 +265,14 @@ export async function scheduleAssignmentReminders(
   const hasPermission = await requestNotificationPermissions();
   if (!hasPermission) return;
 
+  const prefs = await getReminderPrefs();
+  if (!prefs.enabled) {
+    await cancelAssignmentReminders(assignmentId);
+    return;
+  }
+
   const { isCourseEnabled } = useLmsStore.getState();
-  
+
   if (courseId && !isCourseEnabled(courseId)) {
     return; // Do not schedule for archived/disabled courses
   }
@@ -232,7 +291,17 @@ export async function scheduleAssignmentReminders(
   // Load the item to check its reminder settings
   const { items } = useLmsStore.getState();
   const item = items.find((i) => i.id === assignmentId);
-  const isDaily = item?.reminderSettings === 'daily';
+
+  // A per-assignment override (daily / custom JSON) takes precedence over the
+  // global default. When there's no override, fall back to the global mode.
+  const hasPerItemOverride = !!item?.reminderSettings;
+  if (!hasPerItemOverride && prefs.assignmentMode === 'off') {
+    return; // already cancelled above; user disabled the global default
+  }
+
+  const isDaily =
+    item?.reminderSettings === 'daily' ||
+    (!hasPerItemOverride && prefs.assignmentMode === 'daily');
   let isCustom = false;
   let customSettings: any = null;
 
@@ -245,8 +314,10 @@ export async function scheduleAssignmentReminders(
 
   // Schedule notifications
   if (isDaily) {
-    // Schedule a notification at 9:00 AM every day until the due date
-    for (let dayOffset = 1; dayOffset <= 14; dayOffset++) { // Schedule up to 14 days in advance locally
+    // Schedule a notification at 9:00 AM every day until the due date.
+    // Capped at 7 days to stay well under iOS's 64-pending-notification limit
+    // when "Daily" is applied as the global default across many assignments.
+    for (let dayOffset = 1; dayOffset <= 7; dayOffset++) {
       const triggerDate = new Date();
       triggerDate.setDate(now.getDate() + dayOffset);
       triggerDate.setHours(9, 0, 0, 0); // 9:00 AM
@@ -393,6 +464,29 @@ export async function notifyNewAssignment(
       categoryIdentifier: 'new-assignment',
     },
     trigger: null as any,
+  });
+}
+
+/**
+ * Fire an immediate local "Draft Ready" notification.
+ * Used when an AI assignment-draft job finishes (replaces the old server push).
+ */
+export async function notifyDraftReady(
+  assignmentTitle: string,
+  lmsItemId?: string,
+): Promise<void> {
+  const hasPermission = await requestNotificationPermissions();
+  if (!hasPermission) return;
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: '✨ Draft Ready',
+      body: `Your draft for "${assignmentTitle}" is ready in Files › AI Drafts`,
+      data: { type: 'draft-ready', lmsItemId },
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: 'new-assignments' }),
+    },
+    trigger: null as any, // immediate
   });
 }
 

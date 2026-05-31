@@ -66,7 +66,6 @@ async def _run_pipeline(
     from services import gemini as gemini_service
     from services import file_processor
     from services import rag as rag_service
-    from services import notifications as notifications_service
     from services import pdf_generator
     from services.embedding_pipeline import embed_course_files
 
@@ -183,12 +182,8 @@ async def _run_pipeline(
     }
     db.update_job(job_id, status="done", progress=100, result=result)
 
-    assignment_name = assignment.get("name", "your assignment")
-    await notifications_service.send(
-        user_id=user_id,
-        title="Draft Ready",
-        body=f"Your draft for {assignment_name} is ready",
-        data={"screen": "assignment", "analysisId": analysis_id},
-    )
+    # NOTE: "Draft Ready" is surfaced client-side as a local notification when the
+    # app finishes polling this job (see app/(modals)/assignment.tsx). We intentionally
+    # do not send a server push here — the app never registers an Expo push token.
 
     logger.info("analyze_assignment completed for job %s, analysis %s", job_id, analysis_id)

@@ -8,7 +8,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import * as FileSystem from 'expo-file-system';
+// expo-file-system v19 (SDK 55) split its API: the default export is the new
+// File/Directory API, while cacheDirectory / writeAsStringAsync / deleteAsync now
+// live under /legacy. saveAIDraft writes a base64 PDF to a temp file, so use legacy.
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -110,13 +113,18 @@ export default function AssignmentDetailModal() {
   const [customHourStr, setCustomHourStr] = useState('17');
   const [customMinuteStr, setCustomMinuteStr] = useState('00');
 
-  // Auto-open pre-flight when launched via "Generate Draft" notification action
+  // Auto-open pre-flight when launched via "Generate Draft" notification action.
+  // NOTE: `handleGenerateDraft` is intentionally omitted from deps — it is declared
+  // later with useCallback, and referencing it in the dep array here would hit the
+  // temporal dead zone and throw on render. The body reference runs post-mount, so
+  // it resolves fine at call time.
   useEffect(() => {
     if (autoGenerate === 'true' && item && jobStatus === 'idle') {
       const t = setTimeout(() => handleGenerateDraft(), 400);
       return () => clearTimeout(t);
     }
-  }, [autoGenerate, item?.id, handleGenerateDraft]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenerate, item?.id]);
 
   // Poll job status — only restarts when jobId changes
   useEffect(() => {
@@ -147,6 +155,14 @@ export default function AssignmentDetailModal() {
           };
           setAnalysisResult(result);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+          // Local "Draft Ready" notification (replaces the removed server push)
+          if (item) {
+            try {
+              const N = require('../../lib/notifications') as typeof import('../../lib/notifications');
+              N.notifyDraftReady(item.title, item.id).catch(() => {});
+            } catch {}
+          }
 
           // Save PDF to AI Drafts folder
           if (result.pdfBase64 && item) {
@@ -313,6 +329,7 @@ export default function AssignmentDetailModal() {
             </View>
 
             {/* AI Analysis Section */}
+            {/*
             <View style={{
               backgroundColor: jobStatus === 'idle' ? '#F9FAFB' : jobStatus === 'failed' ? '#FEF2F2' : '#F5F3FF',
               borderRadius: 16, padding: 16, marginBottom: 24,
@@ -367,7 +384,6 @@ export default function AssignmentDetailModal() {
                 <Button title="Retry" variant="secondary" icon={<RefreshCw size={16} color="#0A0A0A" />} onPress={handleGenerateDraft} style={{ marginTop: 8 }} />
               )}
 
-              {/* Analysis Result */}
               {jobStatus === 'done' && analysisResult && (
                 <View style={{ gap: 16, marginTop: 8 }}>
                   {analysisResult.summary && (
@@ -405,6 +421,7 @@ export default function AssignmentDetailModal() {
                 </View>
               )}
             </View>
+            */}
 
             {/* Description */}
             {item.description && (
@@ -448,6 +465,7 @@ export default function AssignmentDetailModal() {
       </Animated.View>
 
       {/* Pre-flight Sheet — assignment number + teacher name */}
+      {/*
       <BottomSheet visible={showPreflightSheet} onDismiss={() => setShowPreflightSheet(false)} snapPoint={0.55}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
@@ -482,8 +500,10 @@ export default function AssignmentDetailModal() {
           onPress={handleSubmitPreflight}
         />
       </BottomSheet>
+      */}
 
       {/* One-time Explanation Sheet */}
+      {/*
       <BottomSheet visible={showExplanationSheet} onDismiss={() => setShowExplanationSheet(false)} snapPoint={0.65}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
@@ -526,6 +546,7 @@ export default function AssignmentDetailModal() {
 
         <Button title="Got it" onPress={() => setShowExplanationSheet(false)} />
       </BottomSheet>
+      */}
 
       {/* Reminder Config Bottom Sheet */}
       <BottomSheet visible={showRemindersSheet} onDismiss={() => setShowRemindersSheet(false)} snapPoint={0.65}>

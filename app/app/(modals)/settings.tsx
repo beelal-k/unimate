@@ -6,14 +6,21 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { X, LogOut, RefreshCw, User, Database, ShieldCheck } from 'lucide-react-native';
+import { X, LogOut, RefreshCw, User, Database, ShieldCheck, Bell, ChevronRight } from 'lucide-react-native';
 import { signOutSequence, drainSyncQueue, pullFromTurso } from '../../lib/auth';
 import { useToast } from '../../components/ui/Toast';
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 export default function SettingsModal() {
   const router = useRouter();
   const { showToast } = useToast();
-  
+
   const [profile, setProfile] = useState<{ name: string; username: string; domain: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -72,78 +79,140 @@ export default function SettingsModal() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top', 'bottom']}>
       {/* Header */}
-      <View className="flex-row items-center justify-between px-6 py-4 bg-white border-b border-gray-100 shadow-sm z-10">
-        <Text className="text-xl font-bold tracking-tight text-gray-900">Settings</Text>
-        <TouchableOpacity 
+      <View className="flex-row items-center justify-between px-5 pt-2 pb-4 bg-[#F9FAFB]">
+        <Text className="text-2xl font-bold tracking-tight text-gray-900">Settings</Text>
+        <TouchableOpacity
           onPress={() => router.back()}
-          className="w-10 h-10 rounded-full bg-gray-50 items-center justify-center"
+          hitSlop={8}
+          className="w-9 h-9 rounded-full bg-gray-200/70 items-center justify-center"
         >
-          <X size={20} color="#4B5563" />
+          <X size={18} color="#374151" strokeWidth={2.2} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="flex-1 px-4 py-6" showsVerticalScrollIndicator={false}>
-        
+      <ScrollView
+        className="flex-1 px-5"
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Profile Card */}
-        <View className="bg-white rounded-2xl p-5 mb-6 shadow-sm border border-gray-100 flex-row items-center">
-          <View className="w-16 h-16 rounded-full bg-blue-100 items-center justify-center mr-4 border-2 border-blue-50">
-            <User size={32} color="#2563EB" strokeWidth={1.5} />
+        <View className="bg-white rounded-3xl p-5 mb-7 shadow-sm border border-gray-100 items-center">
+          <View className="w-20 h-20 rounded-full bg-gray-900 items-center justify-center mb-3">
+            <Text className="text-2xl font-bold text-white">{getInitials(profile?.name ?? '')}</Text>
           </View>
-          <View className="flex-1">
-            <Text className="text-lg font-bold text-gray-900 mb-1">{profile?.name}</Text>
-            <Text className="text-sm font-medium text-gray-500">{profile?.username}</Text>
-            <View className="flex-row items-center mt-2 bg-gray-50 self-start px-2 py-1 rounded-md">
-              <ShieldCheck size={12} color="#059669" />
-              <Text className="text-xs font-semibold text-emerald-700 ml-1 ml-1.5">{profile?.domain}</Text>
+          <Text className="text-xl font-bold text-gray-900">{profile?.name ?? 'Student'}</Text>
+          {!!profile?.username && (
+            <Text className="text-sm font-medium text-gray-500 mt-0.5">{profile.username}</Text>
+          )}
+          {!!profile?.domain && (
+            <View className="flex-row items-center mt-3 bg-emerald-50 px-3 py-1.5 rounded-full">
+              <ShieldCheck size={13} color="#059669" />
+              <Text className="text-xs font-semibold text-emerald-700 ml-1.5" numberOfLines={1}>
+                {profile.domain}
+              </Text>
             </View>
-          </View>
+          )}
         </View>
 
-        {/* Cloud Sync section */}
-        <Text className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 ml-2">Data & Storage</Text>
-        <View className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 mb-6">
-          <TouchableOpacity 
-            className="flex-row items-center justify-between p-5 border-b border-gray-50 active:bg-gray-50"
+        {/* Preferences */}
+        <SectionLabel text="Preferences" />
+        <Card>
+          <SettingRow
+            icon={<Bell size={20} color="#2563EB" />}
+            iconBg="bg-blue-50"
+            title="Notifications & Alarms"
+            subtitle="Class reminders and assignment deadlines"
+            onPress={() => router.push('/(modals)/notifications')}
+            showChevron
+          />
+        </Card>
+
+        {/* Data & Storage */}
+        <SectionLabel text="Data & Storage" />
+        <Card>
+          <SettingRow
+            icon={<Database size={20} color="#9333EA" />}
+            iconBg="bg-purple-50"
+            title="Sync with cloud"
+            subtitle="Push offline changes and refresh local data"
             onPress={handleManualSync}
             disabled={isSyncing}
-          >
-            <View className="flex-row items-center flex-1 pr-4">
-              <View className="w-10 h-10 rounded-xl bg-purple-50 items-center justify-center mr-4">
-                <Database size={20} color="#9333EA" />
-              </View>
-              <View>
-                <Text className="text-base font-semibold text-gray-900">Sync with cloud</Text>
-                <Text className="text-xs text-gray-500 mt-1 pr-4" numberOfLines={2}>
-                  Push offline changes and hydrate the SQLite local replica.
-                </Text>
-              </View>
-            </View>
-            {isSyncing ? (
-              <ActivityIndicator color="#9333EA" size="small" />
-            ) : (
-              <RefreshCw size={20} color="#9CA3AF" />
-            )}
-          </TouchableOpacity>
-        </View>
+            trailing={isSyncing
+              ? <ActivityIndicator color="#9333EA" size="small" />
+              : <RefreshCw size={20} color="#9CA3AF" />}
+          />
+        </Card>
 
         {/* Danger Zone */}
-        <Text className="text-xs font-bold text-red-300 uppercase tracking-wider mb-2 ml-2 mt-4">Danger Zone</Text>
-        <View className="bg-white rounded-2xl overflow-hidden shadow-sm border border-red-100 mb-12">
-           <TouchableOpacity 
-             className="flex-row items-center p-5 active:bg-red-50"
-             onPress={handleSignOut}
-             disabled={isLoggingOut}
-           >
-             <View className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center mr-4">
-               {isLoggingOut ? <ActivityIndicator size="small" color="#DC2626" /> : <LogOut size={20} color="#DC2626" />}
-             </View>
-             <Text className="text-base font-bold text-red-600">Sign Out</Text>
-           </TouchableOpacity>
-        </View>
+        <SectionLabel text="Account" />
+        <Card>
+          <SettingRow
+            icon={isLoggingOut
+              ? <ActivityIndicator size="small" color="#DC2626" />
+              : <LogOut size={20} color="#DC2626" />}
+            iconBg="bg-red-50"
+            title="Sign Out"
+            titleClassName="text-red-600 font-bold"
+            subtitle="Removes downloaded files and local data"
+            onPress={handleSignOut}
+            disabled={isLoggingOut}
+          />
+        </Card>
 
+        <Text className="text-center text-xs text-gray-400 mt-8">UniMate v1.0.0</Text>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function SectionLabel({ text }: { text: string }) {
+  return (
+    <Text className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 ml-1">
+      {text}
+    </Text>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <View className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 mb-6">
+      {children}
+    </View>
+  );
+}
+
+function SettingRow({
+  icon, iconBg, title, subtitle, onPress, disabled, trailing, showChevron, titleClassName,
+}: {
+  icon: React.ReactNode;
+  iconBg: string;
+  title: string;
+  subtitle?: string;
+  onPress?: () => void;
+  disabled?: boolean;
+  trailing?: React.ReactNode;
+  showChevron?: boolean;
+  titleClassName?: string;
+}) {
+  return (
+    <TouchableOpacity
+      className="flex-row items-center p-4 active:bg-gray-50"
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
+    >
+      <View className={`w-10 h-10 rounded-xl ${iconBg} items-center justify-center mr-4`}>
+        {icon}
+      </View>
+      <View className="flex-1 pr-2">
+        <Text className={`text-base font-semibold text-gray-900 ${titleClassName ?? ''}`}>{title}</Text>
+        {!!subtitle && (
+          <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={2}>{subtitle}</Text>
+        )}
+      </View>
+      {trailing ?? (showChevron ? <ChevronRight size={20} color="#C0C0C0" /> : null)}
+    </TouchableOpacity>
   );
 }
