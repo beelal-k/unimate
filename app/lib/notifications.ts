@@ -150,11 +150,11 @@ function alarmContent(
  */
 export async function setupNotificationCategories(): Promise<void> {
   await Notifications.setNotificationCategoryAsync('new-assignment', [
-    {
-      identifier: 'generate-draft',
-      buttonTitle: 'Generate Draft',
-      options: { opensAppToForeground: true },
-    },
+    // {
+    //   identifier: 'generate-draft',
+    //   buttonTitle: 'Generate Draft',
+    //   options: { opensAppToForeground: true },
+    // },
     {
       identifier: 'view',
       buttonTitle: 'View',

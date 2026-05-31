@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useRouter, useSegments } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { CalendarDays, BookOpen, FolderOpen, Sparkles } from 'lucide-react-native';
+import { CalendarDays, BookOpen, FolderOpen } from 'lucide-react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -33,20 +33,20 @@ const TOOLTIP_STEPS = [
     color: '#F59E0B',
     top: 250,
   },
-  {
-    path: '(tabs)/chat',
-    title: 'AI Companion',
-    desc: 'Stuck on homework? Send your files to Gemini and get unstuck!',
-    icon: Sparkles,
-    color: '#10B981',
-    top: 200,
-  },
+  // {
+  //   path: '(tabs)/chat',
+  //   title: 'AI Companion',
+  //   desc: 'Stuck on homework? Send your files to Gemini and get unstuck!',
+  //   icon: Sparkles,
+  //   color: '#10B981',
+  //   top: 200,
+  // },
 ];
 
 export function AppTooltip() {
   const router = useRouter();
   const segments = useSegments();
-  
+
   const [isVisible, setIsVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -67,7 +67,7 @@ export function AppTooltip() {
   useEffect(() => {
     if (!isVisible) return;
     const currentPath = segments.join('/');
-    const stepMatch = TOOLTIP_STEPS.findIndex(s => s.path === currentPath);
+    const stepMatch = TOOLTIP_STEPS.findIndex((s) => s.path === currentPath);
     if (stepMatch !== -1 && stepMatch !== currentStep) {
       setCurrentStep(stepMatch);
     }
@@ -99,14 +99,19 @@ export function AppTooltip() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* Dimmed background to focus the tooltip */}
-      <Animated.View 
-        entering={FadeIn} exiting={FadeOut}
-        style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 9998 }]}
+      <Animated.View
+        entering={FadeIn}
+        exiting={FadeOut}
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 9998 },
+        ]}
       />
-      
+
       {/* Tooltip Card */}
-      <Animated.View 
-        entering={FadeIn.duration(250)} exiting={FadeOut.duration(200)}
+      <Animated.View
+        entering={FadeIn.duration(250)}
+        exiting={FadeOut.duration(200)}
         style={{
           position: 'absolute',
           top: stepInfo.top,
@@ -123,30 +128,85 @@ export function AppTooltip() {
           elevation: 10,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${stepInfo.color}15`, justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-             <Icon size={20} color={stepInfo.color} />
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: `${stepInfo.color}15`,
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginRight: 12,
+            }}
+          >
+            <Icon size={20} color={stepInfo.color} />
           </View>
-          <Text style={{ fontSize: 18, fontFamily: 'Inter_700Bold', color: '#0A0A0A' }}>
+          <Text
+            style={{
+              fontSize: 18,
+              fontFamily: 'Inter_700Bold',
+              color: '#0A0A0A',
+            }}
+          >
             {stepInfo.title}
           </Text>
         </View>
 
-        <Text style={{ fontSize: 15, fontFamily: 'Inter_400Regular', color: '#4A4A4A', lineHeight: 22, marginBottom: 20 }}>
+        <Text
+          style={{
+            fontSize: 15,
+            fontFamily: 'Inter_400Regular',
+            color: '#4A4A4A',
+            lineHeight: 22,
+            marginBottom: 20,
+          }}
+        >
           {stepInfo.desc}
         </Text>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
           <Pressable onPress={handleSkip} hitSlop={10}>
-            <Text style={{ fontSize: 14, fontFamily: 'Inter_500Medium', color: '#A0A0A0' }}>Skip</Text>
+            <Text
+              style={{
+                fontSize: 14,
+                fontFamily: 'Inter_500Medium',
+                color: '#A0A0A0',
+              }}
+            >
+              Skip
+            </Text>
           </Pressable>
-          
-          <Pressable 
+
+          <Pressable
             onPress={handleNext}
-            style={{ backgroundColor: stepInfo.color, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 16 }}
+            style={{
+              backgroundColor: stepInfo.color,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: 16,
+            }}
           >
-            <Text style={{ fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' }}>
-              {currentStep === TOOLTIP_STEPS.length - 1 ? "Got it!" : "Next"}
+            <Text
+              style={{
+                fontSize: 14,
+                fontFamily: 'Inter_600SemiBold',
+                color: '#FFFFFF',
+              }}
+            >
+              {currentStep === TOOLTIP_STEPS.length - 1 ? 'Got it!' : 'Next'}
             </Text>
           </Pressable>
         </View>
