@@ -1,0 +1,64 @@
+name: Android Preview Build
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./app
+
+    steps:
+      - name: 📂 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm 
+          cache-dependency-path: app/package-lock.json 
+
+      - name: 🏗 Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🚀 Trigger EAS Android Build
+        run: eas build -p android --profile preview --non-interactive
+
+      - name: 📥 Download APK Artifact
+        run: |
+          # Query EAS and download the APK inside ./app/
+          ARTIFACT_URL=$(eas build:list --platform android --profile preview --status finished --limit 1 --non-interactive --json | jq -r '.[0].artifacts.buildUrl')
+          
+          if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" == "null" ]; then
+            echo "Error: Could not retrieve artifact URL."
+            exit 1
+          fi
+          
+          curl -L -o app-preview.apk "$ARTIFACT_URL"
+
+      - name: 📢 Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: preview-v${{ github.run_number }}
+          name: "Preview Build #${{ github.run_number }}"
+          body: "Latest development build generated from commit ${{ github.sha }}."
+          draft: false
+          prerelease: true
+          files: app/app-preview.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

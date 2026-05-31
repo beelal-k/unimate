@@ -1,0 +1,39 @@
+# fly.toml — Fly.io deployment configuration for UniMate backend
+# Two process groups share one Docker image but run different commands:
+#   web    → FastAPI API server (auto-stops when idle to save VM hours)
+#   worker → Celery worker + Beat scheduler (always on, processes jobs & polling)
+
+app = "unimate-backend"
+primary_region = "sin"  # Singapore — closest to Pakistan
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  web    = "uvicorn main:app --host 0.0.0.0 --port 8080"
+  worker = "celery -A celery_app worker --beat --loglevel=info --concurrency=2"
+
+# HTTP routing — only wired to the web process
+[http_service]
+  internal_port       = 8080
+  force_https         = true
+  auto_stop_machines  = true   # stop web VM when idle (saves free VM hours)
+  auto_start_machines = true   # restart web VM on next request
+  min_machines_running = 0
+  processes           = ["web"]
+
+  [http_service.concurrency]
+    type       = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+# VM sizes — both use the smallest free-tier machine
+[[vm]]
+  size      = "shared-cpu-1x"
+  memory    = "256mb"
+  processes = ["web"]
+
+[[vm]]
+  size      = "shared-cpu-1x"
+  memory    = "256mb"
+  processes = ["worker"]
