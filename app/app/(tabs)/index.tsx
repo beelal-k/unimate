@@ -22,6 +22,7 @@ import { useScheduleStore } from '../../lib/store/useScheduleStore';
 import { useLmsStore } from '../../lib/store/useLmsStore';
 import { useFilesStore } from '../../lib/store/useFilesStore';
 import { useChatStore } from '../../lib/store/useChatStore';
+import { useUpdateStore } from '../../lib/store/useUpdateStore';
 import { Springs } from '../../lib/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -39,6 +40,7 @@ export default function DashboardScreen() {
   const { items: lmsItems, loadItems: loadLms, getUpcomingAssignments, getOverdueAssignments } = useLmsStore();
   const { nodes, loadNodes } = useFilesStore();
   const { conversations, loadConversations } = useChatStore();
+  const { hasUpdate } = useUpdateStore();
 
   useEffect(() => {
     loadClasses();
@@ -96,15 +98,24 @@ export default function DashboardScreen() {
                   {getGreeting()} 👋
                 </Text>
               </View>
-              <Pressable 
-                onPress={() => router.push('/(modals)/settings')}
-                style={{
-                  width: 44, height: 44, borderRadius: 22, backgroundColor: '#F3F4F6',
-                  alignItems: 'center', justifyContent: 'center', marginTop: 8
-                }}
-              >
-                <User size={22} color="#111827" strokeWidth={1.5} />
-              </Pressable>
+              <View style={{ marginTop: 8 }}>
+                <Pressable
+                  onPress={() => router.push('/(modals)/settings')}
+                  style={{
+                    width: 44, height: 44, borderRadius: 22, backgroundColor: '#F3F4F6',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <User size={22} color="#111827" strokeWidth={1.5} />
+                </Pressable>
+                {hasUpdate && (
+                  <View style={{
+                    position: 'absolute', top: 0, right: 0,
+                    width: 12, height: 12, borderRadius: 6,
+                    backgroundColor: '#F97316', borderWidth: 2, borderColor: '#FFFFFF',
+                  }} />
+                )}
+              </View>
             </View>
           </StaggeredItem>
 

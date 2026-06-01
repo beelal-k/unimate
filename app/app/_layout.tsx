@@ -15,6 +15,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { ToastProvider } from '../components/ui/Toast';
 import { AppTooltip } from '../components/ui/AppTooltip';
+import { UpdateChecker } from '../components/update/UpdateChecker';
 import { initializeDatabase } from '../lib/db/client';
 import { setupApp, drainSyncQueue } from '../lib/startup';
 import '../global.css';
@@ -110,6 +111,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <UpdateChecker>
       <ToastProvider>
         <StatusBar style="dark" />
         <Stack
@@ -130,6 +132,7 @@ export default function RootLayout() {
         </Stack>
         <AppTooltip />
       </ToastProvider>
+      </UpdateChecker>
     </GestureHandlerRootView>
   );
 }

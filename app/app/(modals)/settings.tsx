@@ -6,9 +6,12 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { X, LogOut, RefreshCw, User, Database, ShieldCheck, Bell, ChevronRight } from 'lucide-react-native';
+import { X, LogOut, RefreshCw, User, Database, ShieldCheck, Bell, ChevronRight, Download, CheckCircle } from 'lucide-react-native';
 import { signOutSequence, drainSyncQueue, pullFromTurso } from '../../lib/auth';
 import { useToast } from '../../components/ui/Toast';
+import { useUpdateStore } from '../../lib/store/useUpdateStore';
+import { downloadAndInstallApk } from '../../lib/services/updateService';
+import Constants from 'expo-constants';
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -24,6 +27,9 @@ export default function SettingsModal() {
   const [profile, setProfile] = useState<{ name: string; username: string; domain: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const { hasUpdate, latestVersion, downloadUrl, releaseNotes, isDownloading, setIsDownloading } = useUpdateStore();
+  const localVersion = Constants.expoConfig?.version ?? '—';
 
   useEffect(() => {
     async function loadIdentity() {
@@ -116,6 +122,33 @@ export default function SettingsModal() {
           )}
         </View>
 
+        {/* App Update */}
+        <SectionLabel text="App" />
+        <Card>
+          {hasUpdate ? (
+            <SettingRow
+              icon={isDownloading
+                ? <ActivityIndicator size="small" color="#F97316" />
+                : <Download size={20} color="#F97316" />}
+              iconBg="bg-orange-50"
+              title="Update Available"
+              subtitle={`v${latestVersion} ready${releaseNotes ? ` · ${releaseNotes}` : ''}`}
+              onPress={() => downloadUrl && downloadAndInstallApk(downloadUrl, setIsDownloading)}
+              disabled={isDownloading}
+              trailing={isDownloading
+                ? <ActivityIndicator color="#F97316" size="small" />
+                : <ChevronRight size={20} color="#F97316" />}
+            />
+          ) : (
+            <SettingRow
+              icon={<CheckCircle size={20} color="#059669" />}
+              iconBg="bg-emerald-50"
+              title="Up to date"
+              subtitle={`You're on the latest version (v${localVersion})`}
+            />
+          )}
+        </Card>
+
         {/* Preferences */}
         <SectionLabel text="Preferences" />
         <Card>
@@ -161,7 +194,7 @@ export default function SettingsModal() {
           />
         </Card>
 
-        <Text className="text-center text-xs text-gray-400 mt-8">UniMate v1.0.0</Text>
+        <Text className="text-center text-xs text-gray-400 mt-8">UniMate v{localVersion}</Text>
       </ScrollView>
     </SafeAreaView>
   );

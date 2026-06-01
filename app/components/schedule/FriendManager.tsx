@@ -40,12 +40,6 @@ export function FriendManager({ visible, onDismiss }: { visible: boolean; onDism
       return;
     }
     
-    // Check if already friends or pending
-    if (friends.some(f => f.userId === searchId.trim())) {
-      showToast('Already sharing schedule with this user', 'info');
-      return;
-    }
-
     setIsSearching(true);
     setSearchResult(null);
     try {
@@ -64,6 +58,10 @@ export function FriendManager({ visible, onDismiss }: { visible: boolean; onDism
 
   const handleSendRequest = async () => {
     if (!searchResult) return;
+    if (friends.some(f => f.userId === searchResult.id)) {
+      showToast('Already sharing schedule with this user', 'info');
+      return;
+    }
     try {
       await sendRequest(searchResult.id, searchResult.fullname);
       showToast('Request sent!', 'success');

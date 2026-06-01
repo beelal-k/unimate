@@ -1,9 +1,11 @@
+const pkg = require('./package.json');
+
 module.exports = {
     expo: {
         name: 'Unimate',
         slug: 'unimate',
         scheme: 'unimate',
-        version: '1.0.0',
+        version: pkg.version,
         orientation: 'portrait',
         icon: './assets/icon.png',
         userInterfaceStyle: 'light',
@@ -30,7 +32,7 @@ module.exports = {
             },
             package: 'com.beelal.unimate',
             usesCleartextTraffic: true,
-            permissions: ['SCHEDULE_EXACT_ALARM'],
+            permissions: ['SCHEDULE_EXACT_ALARM', 'android.permission.REQUEST_INSTALL_PACKAGES'],
         },
         web: {
             favicon: './assets/favicon.png'
@@ -60,6 +62,8 @@ module.exports = {
         extra: {
             tursoUrl: process.env.TURSO_URL,
             tursoToken: process.env.TURSO_AUTH_TOKEN,
+            posthogKey: process.env.EXPO_PUBLIC_POSTHOG_KEY,
+            apkFallbackUrl: process.env.EXPO_PUBLIC_APK_FALLBACK_URL,
             eas: {
                 projectId: "f7bd96c9-6536-4266-9047-dbe2cd09866d"
             }
