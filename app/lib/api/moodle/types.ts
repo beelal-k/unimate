@@ -26,6 +26,13 @@ export interface MoodleAttachment {
   mimetype: string;
 }
 
+export interface MoodleAssignmentConfig {
+  plugin: string;
+  subtype: string;
+  name: string;
+  value: string;
+}
+
 export interface MoodleAssignment {
   id: number;
   cmid: number;
@@ -37,6 +44,16 @@ export interface MoodleAssignment {
   intro: string;
   nosubmissions: number;
   introattachments?: MoodleAttachment[];
+  configs?: MoodleAssignmentConfig[];
+}
+
+export interface MoodleSubmissionStatus {
+  lastattempt?: {
+    submission?: {
+      status: 'new' | 'draft' | 'submitted' | 'reopened' | string;
+    };
+    submissionsenabled?: boolean;
+  };
 }
 
 export interface MoodleGrade {

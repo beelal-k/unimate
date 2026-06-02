@@ -52,9 +52,9 @@ jobs:
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -z "$PREV_TAG" ]; then
-            LOG=$(git log --pretty=format:"- %s" | head -20)
+            LOG=$(git log --pretty=format:"- %s" | grep -E "^- (feat|fix|chore)(\(.+\))?:" | head -20)
           else
-            LOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s")
+            LOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s" | grep -E "^- (feat|fix|chore)(\(.+\))?:")
           fi
           EOF_MARKER=$(openssl rand -hex 8)
           echo "text<<$EOF_MARKER" >> $GITHUB_OUTPUT

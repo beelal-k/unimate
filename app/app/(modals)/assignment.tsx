@@ -8,16 +8,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-// expo-file-system v19 (SDK 55) split its API: the default export is the new
-// File/Directory API, while cacheDirectory / writeAsStringAsync / deleteAsync now
-// live under /legacy. saveAIDraft writes a base64 PDF to a temp file, so use legacy.
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
+import * as DocumentPicker from 'expo-document-picker';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
-  X, FileText, Download, Clock, Sparkles, BookOpen, CheckCircle,
-  RefreshCw, Bell, BellRing, Settings, FileDown, Info, ExternalLink,
+  X, FileText, Download, Clock, BookOpen, CheckCircle,
+  Bell, BellRing, Settings, ExternalLink, Link,
+  Upload, Award, Paperclip, AlertCircle, CheckCircle2,
 } from 'lucide-react-native';
 import { randomUUID } from 'expo-crypto';
 
@@ -28,6 +27,15 @@ import { Button } from '../../components/ui/Button';
 import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Input } from '../../components/ui/Input';
 import { useToast } from '../../components/ui/Toast';
+import {
+  getMoodleCredentials,
+  getSiteInfo,
+  getUnusedDraftItemId,
+  uploadFileToDraft,
+  saveSubmission,
+  submitForGrading,
+  removeSubmission,
+} from '../../lib/api/moodle';
 
 const DRAFT_SEEN_KEY = 'unimate_draft_explanation_shown';
 
@@ -82,7 +90,7 @@ async function saveAIDraft(
 export default function AssignmentDetailModal() {
   const router = useRouter();
   const { id, autoGenerate } = useLocalSearchParams<{ id: string; autoGenerate?: string }>();
-  const { items, toggleItemDone, updateReminderSettings } = useLmsStore();
+  const { items, toggleItemDone, updateReminderSettings, markAsSubmitted, markAsUnsubmitted } = useLmsStore();
   const filesStore = useFilesStore();
   const { showToast } = useToast();
 
@@ -106,6 +114,14 @@ export default function AssignmentDetailModal() {
   // One-time explanation sheet (shown after first successful draft)
   const [showExplanationSheet, setShowExplanationSheet] = useState(false);
   const [savedPdfUri, setSavedPdfUri] = useState<string | null>(null);
+
+  // Submission state
+  const [showSubmitSheet, setShowSubmitSheet] = useState(false);
+  const [pickedFile, setPickedFile] = useState<{ uri: string; name: string; mimeType: string; size: number } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [submitStep, setSubmitStep] = useState<'idle' | 'uploading' | 'saving' | 'done' | 'error'>('idle');
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Reminders state
   const [showRemindersSheet, setShowRemindersSheet] = useState(false);
@@ -228,6 +244,75 @@ export default function AssignmentDetailModal() {
       setJobStatus('idle');
     }
   }, [item, assignmentNumber, teacherName]);
+
+  const handlePickFile = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      setPickedFile({
+        uri: asset.uri,
+        name: asset.name,
+        mimeType: asset.mimeType ?? 'application/octet-stream',
+        size: asset.size ?? 0,
+      });
+      setSubmitStep('idle');
+      setSubmitError(null);
+    } catch {
+      showToast('Failed to pick file', 'error');
+    }
+  }, []);
+
+  const handleSubmitAssignment = useCallback(async () => {
+    if (!item?.moodleId || !pickedFile) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const creds = await getMoodleCredentials();
+      if (!creds) throw new Error('Not connected to Moodle');
+
+      setSubmitStep('uploading');
+      const draftId = await getUnusedDraftItemId(creds);
+      await uploadFileToDraft(creds, draftId, pickedFile.uri, pickedFile.name, pickedFile.mimeType);
+
+      setSubmitStep('saving');
+      await saveSubmission(creds, item.moodleId, draftId);
+      // Best-effort: submit for grading (not all assignments require this)
+      try { await submitForGrading(creds, item.moodleId); } catch {}
+
+      setSubmitStep('done');
+      await markAsSubmitted(item.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('Submitted successfully', 'success');
+    } catch (err: any) {
+      setSubmitStep('error');
+      setSubmitError(err.message || 'Submission failed');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [item, pickedFile]);
+
+  const handleRemoveSubmission = useCallback(async () => {
+    if (!item?.moodleId) return;
+    setIsRemoving(true);
+    setSubmitError(null);
+    try {
+      const creds = await getMoodleCredentials();
+      if (!creds) throw new Error('Not connected to Moodle');
+      const siteInfo = await getSiteInfo(creds);
+      await removeSubmission(creds, item.moodleId, siteInfo.userid);
+      await markAsUnsubmitted(item.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('Submission removed', 'success');
+      setShowSubmitSheet(false);
+    } catch (err: any) {
+      setSubmitError(err.message || 'Failed to remove submission');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsRemoving(false);
+    }
+  }, [item]);
 
   const openAttachment = (att: LmsAttachment) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -423,6 +508,82 @@ export default function AssignmentDetailModal() {
             </View>
             */}
 
+            {/* Grade */}
+            {(item.status === 'graded' || item.grade !== null) && (
+              <View style={{
+                backgroundColor: '#F0FDF4', borderRadius: 16, padding: 16, marginBottom: 24,
+                borderWidth: 1, borderColor: '#BBF7D0',
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{
+                    width: 36, height: 36, borderRadius: 10, backgroundColor: '#DCFCE7',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Award size={18} color="#16A34A" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontFamily: 'Inter_500Medium', color: '#15803D' }}>Grade Received</Text>
+                    <Text style={{ fontSize: 22, fontFamily: 'Inter_700Bold', color: '#15803D', marginTop: 2 }}>
+                      {item.grade ?? '—'}
+                      {item.maxGrade ? (
+                        <Text style={{ fontSize: 14, fontFamily: 'Inter_400Regular', color: '#16A34A' }}>
+                          {' '}/ {item.maxGrade}
+                        </Text>
+                      ) : null}
+                    </Text>
+                  </View>
+                  {item.grade !== null && item.maxGrade !== null && (
+                    <View style={{ backgroundColor: '#16A34A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
+                      <Text style={{ fontSize: 13, fontFamily: 'Inter_700Bold', color: '#FFFFFF' }}>
+                        {Math.round((parseFloat(item.grade) / parseFloat(item.maxGrade)) * 100)}%
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Submit Assignment */}
+            {item.submissionConfig && item.status !== 'graded' && (
+              <View style={{ marginBottom: 24 }}>
+                <Text style={{ fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#0A0A0A', marginBottom: 12 }}>
+                  Submit Assignment
+                </Text>
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowSubmitSheet(true); }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    backgroundColor: item.status === 'submitted' ? '#F0FDF4' : '#F9FAFB',
+                    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
+                    borderWidth: 1.5, borderColor: item.status === 'submitted' ? '#BBF7D0' : '#E5E7EB',
+                  }}
+                >
+                  <View style={{
+                    width: 38, height: 38, borderRadius: 10,
+                    backgroundColor: item.status === 'submitted' ? '#DCFCE7' : '#F3F4F6',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {item.status === 'submitted'
+                      ? <CheckCircle2 size={18} color="#16A34A" />
+                      : <Upload size={18} color="#6B7280" />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontFamily: 'Inter_500Medium', color: '#111827' }}>
+                      {item.status === 'submitted' ? 'Submitted' : 'Attach & Submit'}
+                    </Text>
+                    <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#6B7280', marginTop: 2 }}>
+                      {item.submissionConfig.allowedTypes.length > 0
+                        ? item.submissionConfig.allowedTypes.join(', ')
+                        : 'Any file type'}{item.submissionConfig.maxSizeBytes > 0
+                        ? ` · max ${formatFileSize(item.submissionConfig.maxSizeBytes)}`
+                        : ''}
+                    </Text>
+                  </View>
+                  <ExternalLink size={16} color="#9CA3AF" />
+                </Pressable>
+              </View>
+            )}
+
             {/* Description */}
             {item.description && (
               <View style={{ marginBottom: 24 }}>
@@ -431,32 +592,39 @@ export default function AssignmentDetailModal() {
               </View>
             )}
 
-            {/* Attachments */}
+            {/* Attachments & Links */}
             {item.attachments?.length > 0 && (
               <View>
                 <Text style={{ fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#0A0A0A', marginBottom: 12 }}>Attachments</Text>
                 <View style={{ gap: 8 }}>
-                  {item.attachments.map((att, i) => (
-                    <Pressable
-                      key={i}
-                      onPress={() => openAttachment(att)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 12,
-                        backgroundColor: '#F9FAFB', borderRadius: 12,
-                        paddingHorizontal: 16, paddingVertical: 14,
-                        borderWidth: 1, borderColor: '#F3F4F6',
-                      }}
-                    >
-                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F3F4F6' }}>
-                        <FileText size={16} color="#6B7280" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, fontFamily: 'Inter_500Medium', color: '#111827' }} numberOfLines={1}>{att.filename}</Text>
-                        <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#6B7280', marginTop: 2 }}>{formatFileSize(att.filesize)}</Text>
-                      </View>
-                      <Download size={18} color="#6B7280" />
-                    </Pressable>
-                  ))}
+                  {item.attachments.map((att, i) => {
+                    const isLink = att.type === 'link' || att.mimetype === 'link';
+                    let subtitle = isLink ? att.fileurl : formatFileSize(att.filesize);
+                    try {
+                      if (isLink) subtitle = new URL(att.fileurl).hostname;
+                    } catch {}
+                    return (
+                      <Pressable
+                        key={i}
+                        onPress={() => openAttachment(att)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 12,
+                          backgroundColor: '#F9FAFB', borderRadius: 12,
+                          paddingHorizontal: 16, paddingVertical: 14,
+                          borderWidth: 1, borderColor: '#F3F4F6',
+                        }}
+                      >
+                        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F3F4F6' }}>
+                          {isLink ? <Link size={16} color="#6B7280" /> : <FileText size={16} color="#6B7280" />}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontFamily: 'Inter_500Medium', color: '#111827' }} numberOfLines={1}>{att.filename}</Text>
+                          <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#6B7280', marginTop: 2 }} numberOfLines={1}>{subtitle}</Text>
+                        </View>
+                        {isLink ? <ExternalLink size={18} color="#6B7280" /> : <Download size={18} color="#6B7280" />}
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
             )}
@@ -547,6 +715,151 @@ export default function AssignmentDetailModal() {
         <Button title="Got it" onPress={() => setShowExplanationSheet(false)} />
       </BottomSheet>
       */}
+
+      {/* Submit Assignment Sheet */}
+      <BottomSheet visible={showSubmitSheet} onDismiss={() => { if (!isSubmitting) { setShowSubmitSheet(false); setPickedFile(null); setSubmitStep('idle'); setSubmitError(null); } }} snapPoint={0.55}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
+            <Upload size={18} color="#374151" />
+          </View>
+          <Text style={{ fontSize: 20, fontFamily: 'Inter_700Bold', color: '#0A0A0A' }}>Submit Assignment</Text>
+        </View>
+
+        {item.submissionConfig && (
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 10, marginBottom: 20 }}>
+            {item.submissionConfig.allowedTypes.length > 0 && (
+              <View style={{ backgroundColor: '#F3F4F6', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 }}>
+                <Text style={{ fontSize: 12, fontFamily: 'Inter_500Medium', color: '#374151' }}>
+                  {item.submissionConfig.allowedTypes.join(', ')}
+                </Text>
+              </View>
+            )}
+            {item.submissionConfig.maxSizeBytes > 0 && (
+              <View style={{ backgroundColor: '#F3F4F6', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 }}>
+                <Text style={{ fontSize: 12, fontFamily: 'Inter_500Medium', color: '#374151' }}>
+                  Max {formatFileSize(item.submissionConfig.maxSizeBytes)}
+                </Text>
+              </View>
+            )}
+            {item.submissionConfig.maxFiles > 1 && (
+              <View style={{ backgroundColor: '#F3F4F6', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 }}>
+                <Text style={{ fontSize: 12, fontFamily: 'Inter_500Medium', color: '#374151' }}>
+                  Up to {item.submissionConfig.maxFiles} files
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {item.status === 'submitted' && submitStep !== 'done' ? (
+          /* ── Already submitted view ── */
+          <View style={{ gap: 16 }}>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 12,
+              backgroundColor: '#F0FDF4', borderRadius: 14,
+              paddingHorizontal: 16, paddingVertical: 16,
+              borderWidth: 1.5, borderColor: '#BBF7D0',
+            }}>
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckCircle2 size={18} color="#16A34A" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#15803D' }}>Submission received</Text>
+                <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#16A34A', marginTop: 2 }}>
+                  Your file has been submitted to Moodle.
+                </Text>
+              </View>
+            </View>
+
+            {submitError && (
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12 }}>
+                <AlertCircle size={16} color="#DC2626" style={{ marginTop: 1 }} />
+                <Text style={{ flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular', color: '#DC2626', lineHeight: 18 }}>{submitError}</Text>
+              </View>
+            )}
+
+            {isRemoving && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color="#6B7280" />
+                <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: '#6B7280' }}>Removing submission...</Text>
+              </View>
+            )}
+
+            <Button
+              title={isRemoving ? 'Removing...' : 'Remove Submission'}
+              variant="secondary"
+              onPress={handleRemoveSubmission}
+              disabled={isRemoving}
+              style={{ opacity: isRemoving ? 0.5 : 1 }}
+            />
+          </View>
+        ) : submitStep === 'done' ? (
+          /* ── Just submitted success view ── */
+          <View style={{ alignItems: 'center', paddingVertical: 24, gap: 12 }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center' }}>
+              <CheckCircle2 size={28} color="#16A34A" />
+            </View>
+            <Text style={{ fontSize: 17, fontFamily: 'Inter_600SemiBold', color: '#15803D' }}>Submitted!</Text>
+            <Text style={{ fontSize: 14, fontFamily: 'Inter_400Regular', color: '#6B7280', textAlign: 'center' }}>
+              Your file has been submitted successfully.
+            </Text>
+            <Button title="Done" onPress={() => { setShowSubmitSheet(false); setPickedFile(null); setSubmitStep('idle'); }} style={{ marginTop: 8, width: '100%' }} />
+          </View>
+        ) : (
+          /* ── Upload view ── */
+          <View style={{ gap: 16 }}>
+            <Pressable
+              onPress={handlePickFile}
+              disabled={isSubmitting}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 12,
+                backgroundColor: pickedFile ? '#F0FDF4' : '#F9FAFB',
+                borderRadius: 14, paddingHorizontal: 16, paddingVertical: 16,
+                borderWidth: 1.5, borderColor: pickedFile ? '#BBF7D0' : '#E5E7EB',
+                borderStyle: pickedFile ? 'solid' : 'dashed',
+              }}
+            >
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: pickedFile ? '#DCFCE7' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
+                <Paperclip size={18} color={pickedFile ? '#16A34A' : '#6B7280'} />
+              </View>
+              <View style={{ flex: 1 }}>
+                {pickedFile ? (
+                  <>
+                    <Text style={{ fontSize: 14, fontFamily: 'Inter_500Medium', color: '#111827' }} numberOfLines={1}>{pickedFile.name}</Text>
+                    <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#6B7280', marginTop: 2 }}>{formatFileSize(pickedFile.size)}</Text>
+                  </>
+                ) : (
+                  <Text style={{ fontSize: 14, fontFamily: 'Inter_500Medium', color: '#6B7280' }}>Tap to choose a file</Text>
+                )}
+              </View>
+              {pickedFile && <CheckCircle2 size={18} color="#16A34A" />}
+            </Pressable>
+
+            {submitError && (
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12 }}>
+                <AlertCircle size={16} color="#DC2626" style={{ marginTop: 1 }} />
+                <Text style={{ flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular', color: '#DC2626', lineHeight: 18 }}>{submitError}</Text>
+              </View>
+            )}
+
+            {(submitStep === 'uploading' || submitStep === 'saving') && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color="#6B7280" />
+                <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: '#6B7280' }}>
+                  {submitStep === 'uploading' ? 'Uploading file...' : 'Saving submission...'}
+                </Text>
+              </View>
+            )}
+
+            <Button
+              title={isSubmitting ? 'Submitting...' : 'Submit'}
+              onPress={handleSubmitAssignment}
+              disabled={!pickedFile || isSubmitting}
+              style={{ opacity: (!pickedFile || isSubmitting) ? 0.5 : 1 }}
+            />
+          </View>
+        )}
+      </BottomSheet>
 
       {/* Reminder Config Bottom Sheet */}
       <BottomSheet visible={showRemindersSheet} onDismiss={() => setShowRemindersSheet(false)} snapPoint={0.65}>

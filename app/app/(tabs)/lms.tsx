@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import {
   BookOpen, RefreshCw, LogOut, AlertTriangle, Clock, CheckCircle2, Wifi,
-  Eye, EyeOff, Filter, Settings2,
+  Eye, EyeOff, Filter, Settings2, ClipboardList,
 } from 'lucide-react-native';
 import { ChevronDown, ChevronRight, Pin, PinOff } from 'lucide-react-native';
 import Animated, { useAnimatedStyle, withSpring, useSharedValue } from 'react-native-reanimated';
@@ -19,7 +19,9 @@ import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { AssignmentItem } from '../../components/lms/AssignmentItem';
+import { QuizItem } from '../../components/quiz/QuizItem';
 import { useLmsStore, type LmsItem } from '../../lib/store/useLmsStore';
+import { useQuizStore } from '../../lib/store/useQuizStore';
 import { useToast } from '../../components/ui/Toast';
 
 export default function LmsScreen() {
@@ -30,6 +32,8 @@ export default function LmsScreen() {
     manuallyDisabledCourseIds, manuallyPinnedCourseIds, courseCategories, isCourseEnabled
   } = useLmsStore();
 
+  const quizStore = useQuizStore();
+
   const { showToast } = useToast();
   const [showLoginSheet, setShowLoginSheet] = useState(false);
   const [siteUrl, setSiteUrl] = useState('');
@@ -39,8 +43,18 @@ export default function LmsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Filter state
-  type FilterMode = 'all' | 'overdue' | 'old';
+  type FilterMode = 'all' | 'quizzes' | 'overdue' | 'old';
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+  const toggleSection = useCallback((title: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      next.has(title) ? next.delete(title) : next.add(title);
+      return next;
+    });
+  }, []);
   
   const [showPassword, setShowPassword] = useState(false);
   const [showCourseSettings, setShowCourseSettings] = useState(false);
@@ -48,8 +62,18 @@ export default function LmsScreen() {
 
   useEffect(() => {
     checkConnection().then((connected: boolean) => {
-      if (connected) loadItems();
+      if (connected) {
+        loadItems();
+        // Sync quizzes once courses are loaded
+        const courseIds = useLmsStore.getState().courses.map((c: any) => c.id);
+        if (courseIds.length > 0) quizStore.syncQuizzes(courseIds);
+      }
     });
+  }, []);
+
+  const syncQuizzesFromCourses = useCallback(async () => {
+    const courseIds = useLmsStore.getState().courses.map((c: any) => c.id);
+    if (courseIds.length > 0) await quizStore.syncQuizzes(courseIds);
   }, []);
 
   const handleConnect = useCallback(async () => {
@@ -69,6 +93,7 @@ export default function LmsScreen() {
       setShowLoginSheet(false);
       setSiteUrl(''); setUsername(''); setPassword('');
       await syncFromMoodle();
+      await syncQuizzesFromCourses();
       showToast('Synced assignments', 'success');
     } catch (error: any) {
       showToast(error.message || 'Connection failed', 'error');
@@ -82,6 +107,7 @@ export default function LmsScreen() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await syncFromMoodle();
+      await syncQuizzesFromCourses();
       showToast('Synced!', 'success');
     } catch (error: any) {
       showToast(error.message || 'Sync failed', 'error');
@@ -90,7 +116,10 @@ export default function LmsScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    try { await syncFromMoodle(); } catch {}
+    try {
+      await syncFromMoodle();
+      await syncQuizzesFromCourses();
+    } catch {}
     setRefreshing(false);
   }, []);
 
@@ -101,26 +130,81 @@ export default function LmsScreen() {
   const archivedItems = useMemo(() => getArchivedCourseItems(), [items, manuallyDisabledCourseIds, manuallyPinnedCourseIds, courseCategories]);
 
   const sections = useMemo(() => {
-    const s = [];
+    const s: any[] = [];
+    const collapsed = (title: string) => collapsedSections.has(title);
+    if (filterMode === 'quizzes') {
+      // No assignment sections — quiz section renders via ListFooterComponent
+      return s;
+    }
     if (filterMode === 'all') {
-      if (upcoming.length > 0) s.push({ title: 'Upcoming', icon: <Clock size={16} color="#6E6E6E" strokeWidth={1.8} />, data: upcoming });
-      if (completed.length > 0) s.push({ title: 'Completed', icon: <CheckCircle2 size={16} color="#A0A0A0" strokeWidth={1.8} />, data: completed });
+      if (upcoming.length > 0) s.push({ title: 'Upcoming', icon: <Clock size={16} color="#6E6E6E" strokeWidth={1.8} />, totalCount: upcoming.length, data: collapsed('Upcoming') ? [] : upcoming });
+      if (completed.length > 0) s.push({ title: 'Completed', icon: <CheckCircle2 size={16} color="#A0A0A0" strokeWidth={1.8} />, totalCount: completed.length, data: collapsed('Completed') ? [] : completed });
     } else if (filterMode === 'overdue') {
-      if (overdue.length > 0) s.push({ title: 'Overdue', icon: <AlertTriangle size={16} color="#EF4444" strokeWidth={1.8} />, data: overdue });
+      if (overdue.length > 0) s.push({ title: 'Overdue', icon: <AlertTriangle size={16} color="#EF4444" strokeWidth={1.8} />, totalCount: overdue.length, data: collapsed('Overdue') ? [] : overdue });
     } else if (filterMode === 'old') {
       Object.entries(archivedItems).forEach(([courseName, list]) => {
         const course = courses.find((c: any) => c.fullname === courseName || c.shortname === courseName);
-        s.push({ 
-          title: courseName, 
-          icon: <BookOpen size={16} color="#A0A0A0" strokeWidth={1.8} />, 
-          data: list,
+        s.push({
+          title: courseName,
+          icon: <BookOpen size={16} color="#A0A0A0" strokeWidth={1.8} />,
+          totalCount: list.length,
+          data: collapsed(courseName) ? [] : list,
           isArchivedCourse: true,
-          courseObj: course
+          courseObj: course,
         });
       });
     }
     return s;
-  }, [filterMode, upcoming, completed, overdue, archivedItems, courses]);
+  }, [filterMode, upcoming, completed, overdue, archivedItems, courses, collapsedSections]);
+
+  const courseNameMap = useMemo(() => {
+    const m: Record<number, string> = {};
+    courses.forEach((c: any) => { m[c.id] = c.fullname || c.shortname || ''; });
+    return m;
+  }, [courses]);
+
+  const renderQuizSection = () => {
+    const { quizzes, attempts, bestGrades, isSyncing: quizSyncing } = quizStore;
+    if (quizSyncing && quizzes.length === 0) return null;
+    // Only show quizzes that haven't closed yet
+    const now = Date.now();
+    const visibleQuizzes = quizzes.filter((q) => q.timeclose === 0 || q.timeclose * 1000 > now);
+    if (visibleQuizzes.length === 0) return null;
+
+    const isCollapsed = collapsedSections.has('Quizzes');
+    return (
+      <View style={{ marginTop: 8 }}>
+        <Pressable
+          onPress={() => toggleSection('Quizzes')}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#FAFAFA',
+          }}
+        >
+          <ClipboardList size={16} color="#6E6E6E" strokeWidth={1.8} />
+          <Text style={{ flex: 1, fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#6E6E6E', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            Quizzes
+          </Text>
+          <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#A0A0A0', marginRight: 6 }}>
+            ({visibleQuizzes.length})
+          </Text>
+          {isCollapsed
+            ? <ChevronRight size={16} color="#A0A0A0" strokeWidth={2} />
+            : <ChevronDown size={16} color="#A0A0A0" strokeWidth={2} />}
+        </Pressable>
+        {!isCollapsed && visibleQuizzes.map((quiz, i) => (
+          <QuizItem
+            key={quiz.id}
+            quiz={quiz}
+            courseName={courseNameMap[quiz.course] ?? ''}
+            attempts={attempts[quiz.id] ?? []}
+            bestGrade={bestGrades[quiz.id]}
+            index={i}
+          />
+        ))}
+      </View>
+    );
+  };
 
   const heightValue = useSharedValue(0);
   const opacityValue = useSharedValue(0);
@@ -140,7 +224,7 @@ export default function LmsScreen() {
     <View style={{ paddingHorizontal: 20, paddingBottom: 8, gap: 10 }}>
       {filterMode === 'all' && (
       <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: '#A0A0A0' }}>
-        {courses.length} course{courses.length > 1 ? 's' : ''} · {items.filter((i: any) => i.type === 'assignment').length} assignments
+        {courses.length} course{courses.length > 1 ? 's' : ''} · {items.filter((i: any) => i.type === 'assignment').length} assignments · {quizStore.quizzes.length} quizzes
         {lastSyncAt && ` · ${new Date(lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
       </Text>
       )}
@@ -174,6 +258,23 @@ export default function LmsScreen() {
           }}
         >
           <Text style={{ fontSize: 13, fontFamily: 'Inter_500Medium', color: filterMode === 'all' ? '#FFFFFF' : '#6E6E6E' }}>All</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setFilterMode('quizzes');
+          }}
+          style={{
+            paddingHorizontal: 12, paddingVertical: 6,
+            borderRadius: 20, borderWidth: 1,
+            flexDirection: 'row', alignItems: 'center', gap: 5,
+            backgroundColor: filterMode === 'quizzes' ? '#0A0A0A' : '#FAFAFA',
+            borderColor: filterMode === 'quizzes' ? '#0A0A0A' : '#E4E4E4',
+          }}
+        >
+          <ClipboardList size={13} color={filterMode === 'quizzes' ? '#FFFFFF' : '#6E6E6E'} strokeWidth={1.8} />
+          <Text style={{ fontSize: 13, fontFamily: 'Inter_500Medium', color: filterMode === 'quizzes' ? '#FFFFFF' : '#6E6E6E' }}>Quizzes</Text>
         </Pressable>
 
         <Pressable
@@ -285,6 +386,7 @@ export default function LmsScreen() {
               showsVerticalScrollIndicator={false}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#0A0A0A" />}
               ListHeaderComponent={renderFilterHeader}
+              ListFooterComponent={filterMode === 'all' || filterMode === 'quizzes' ? renderQuizSection : null}
               sections={sections}
               keyExtractor={(item) => item.id}
               initialNumToRender={5}
@@ -296,34 +398,46 @@ export default function LmsScreen() {
                   <AssignmentItem item={item as any} index={index} />
                 </View>
               )}
-              renderSectionHeader={({ section }) => (
-                <View style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#FAFAFA',
-                  marginTop: section.title === 'Overdue' ? 0 : 8,
-                }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                    {section.icon}
-                    <Text style={{ fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#6E6E6E', letterSpacing: 0.5, textTransform: 'uppercase' }} numberOfLines={1}>
-                      {section.title}
-                    </Text>
-                    <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#A0A0A0' }}>({section.data.length})</Text>
-                  </View>
-                  {(section as any).isArchivedCourse && (section as any).courseObj && (
-                    <Pressable
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        toggleCoursePin((section as any).courseObj.id);
-                        showToast(`Pinned ${(section as any).courseObj.shortname || 'course'} as active`, 'success');
-                      }}
-                      style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: '#F0F0F0', borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                    >
-                      <Pin size={12} color="#6E6E6E" />
-                      <Text style={{ fontSize: 11, fontFamily: 'Inter_500Medium', color: '#6E6E6E' }}>Pin active</Text>
-                    </Pressable>
-                  )}
-                </View>
-              )}
+              renderSectionHeader={({ section }) => {
+                const isCollapsed = collapsedSections.has(section.title);
+                const count = (section as any).totalCount ?? section.data.length;
+                return (
+                  <Pressable
+                    onPress={() => toggleSection(section.title)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#FAFAFA',
+                      marginTop: section.title === 'Overdue' ? 0 : 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      {section.icon}
+                      <Text style={{ fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#6E6E6E', letterSpacing: 0.5, textTransform: 'uppercase' }} numberOfLines={1}>
+                        {section.title}
+                      </Text>
+                      <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#A0A0A0' }}>({count})</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {(section as any).isArchivedCourse && (section as any).courseObj && (
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            toggleCoursePin((section as any).courseObj.id);
+                            showToast(`Pinned ${(section as any).courseObj.shortname || 'course'} as active`, 'success');
+                          }}
+                          style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: '#F0F0F0', borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                        >
+                          <Pin size={12} color="#6E6E6E" />
+                          <Text style={{ fontSize: 11, fontFamily: 'Inter_500Medium', color: '#6E6E6E' }}>Pin active</Text>
+                        </Pressable>
+                      )}
+                      {isCollapsed
+                        ? <ChevronRight size={16} color="#A0A0A0" strokeWidth={2} />
+                        : <ChevronDown size={16} color="#A0A0A0" strokeWidth={2} />}
+                    </View>
+                  </Pressable>
+                );
+              }}
               ListEmptyComponent={() => (
                 <View style={{ paddingHorizontal: 20, paddingTop: 40, alignItems: 'center' }}>
                   <Text style={{ fontSize: 14, fontFamily: 'Inter_400Regular', color: '#A0A0A0' }}>

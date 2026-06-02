@@ -97,6 +97,7 @@ export const lmsItems = sqliteTable('lms_items', {
   isDone: integer('is_done', { mode: 'boolean' }).default(false),
   reminderSettings: text('reminder_settings'), // JSON string
   attachments: text('attachments'), // JSON array of {filename, fileurl, filesize, mimetype}
+  submissionConfig: text('submission_config'), // JSON {maxFiles, maxSizeBytes, allowedTypes}
   syncedAt: text('synced_at').notNull(),
 });
 

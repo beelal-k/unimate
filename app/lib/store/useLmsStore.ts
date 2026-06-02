@@ -13,7 +13,10 @@ import {
   loginToMoodle,
   getCourses,
   getAssignments,
+  getGrades,
   getSiteInfo,
+  getSubmissionStatus,
+  type SubmissionConfig,
   type MoodleCourse,
 } from '../api/moodle';
 
@@ -30,6 +33,7 @@ export interface LmsAttachment {
   fileurl: string;
   filesize: number;
   mimetype: string;
+  type?: 'file' | 'link';
 }
 
 export interface LmsItem {
@@ -47,6 +51,7 @@ export interface LmsItem {
   isDone: boolean;
   reminderSettings: string | null;
   attachments: LmsAttachment[];
+  submissionConfig: SubmissionConfig | null;
   syncedAt: string;
 }
 
@@ -76,11 +81,32 @@ interface LmsState {
   getArchivedCourseItems: () => Record<string, LmsItem[]>;
   toggleItemDone: (itemId: string, isDone: boolean) => Promise<void>;
   updateReminderSettings: (itemId: string, settings: string | null) => Promise<void>;
+  markAsSubmitted: (itemId: string) => Promise<void>;
+  markAsUnsubmitted: (itemId: string) => Promise<void>;
 }
 
-function computeStatus(dueDate: number | null): 'upcoming' | 'overdue' {
+function computeStatus(
+  dueDate: number | null,
+  moodleSubmissionStatus?: string,
+): 'upcoming' | 'overdue' | 'submitted' {
+  if (moodleSubmissionStatus === 'submitted' || moodleSubmissionStatus === 'reopened') {
+    return 'submitted';
+  }
   if (!dueDate || dueDate === 0) return 'upcoming';
   return (dueDate * 1000) < Date.now() ? 'overdue' : 'upcoming';
+}
+
+function extractLinksFromHtml(html: string): LmsAttachment[] {
+  const links: LmsAttachment[] = [];
+  const regex = /<a[^>]+href=["']([^"'#][^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    const url = match[1].trim();
+    const label = match[2].replace(/<[^>]*>/g, '').trim();
+    if (!url || url.startsWith('javascript:')) continue;
+    links.push({ filename: label || url, fileurl: url, filesize: 0, mimetype: 'link', type: 'link' });
+  }
+  return links;
 }
 
 export function getCurrentSemesterCode(): string {
@@ -119,8 +145,12 @@ export function isAssignmentRelevant(dueDate: string | null, status: string): bo
 
 function rowToItem(row: typeof lmsItems.$inferSelect): LmsItem {
   let attachments: LmsAttachment[] = [];
+  let submissionConfig: SubmissionConfig | null = null;
   try {
     if (row.attachments) attachments = JSON.parse(row.attachments) as LmsAttachment[];
+  } catch {}
+  try {
+    if ((row as any).submissionConfig) submissionConfig = JSON.parse((row as any).submissionConfig) as SubmissionConfig;
   } catch {}
   return {
     id: row.id,
@@ -137,6 +167,7 @@ function rowToItem(row: typeof lmsItems.$inferSelect): LmsItem {
     isDone: Boolean(row.isDone),
     reminderSettings: row.reminderSettings,
     attachments,
+    submissionConfig,
     syncedAt: row.syncedAt,
   };
 }
@@ -236,39 +267,102 @@ export const useLmsStore = create<LmsState>((set, get) => ({
       const assignments = courseIds.length > 0 ? await getAssignments(creds, courseIds) : [];
       const courseNameMap = new Map(courses.map((c) => [c.id, c.fullname || c.shortname]));
 
+      // Fetch submission status + grades for all assignments/courses in parallel.
+      const [submissionResults, gradeResults] = await Promise.all([
+        Promise.allSettled(assignments.map((a) => getSubmissionStatus(creds, a.id))),
+        Promise.allSettled(courses.map((c) => getGrades(creds, c.id, siteInfo.userid))),
+      ]);
+
+      const submissionStatusMap = new Map<number, string>();
+      assignments.forEach((a, i) => {
+        const result = submissionResults[i];
+        if (result.status === 'fulfilled') {
+          const moodleStatus = result.value.lastattempt?.submission?.status;
+          if (moodleStatus) submissionStatusMap.set(a.id, moodleStatus);
+        }
+      });
+
+      // Build grade map: "courseId:assignmentName" -> {graderaw, grademax}
+      const gradeMap = new Map<string, { grade: string | null; maxGrade: string }>();
+      courses.forEach((c, i) => {
+        const result = gradeResults[i];
+        if (result.status === 'fulfilled') {
+          for (const g of result.value) {
+            if (g.itemname) {
+              gradeMap.set(`${c.id}:${g.itemname}`, {
+                grade: g.graderaw !== null && g.graderaw !== undefined ? String(Math.round(g.graderaw * 100) / 100) : null,
+                maxGrade: String(g.grademax),
+              });
+            }
+          }
+        }
+      });
+
       const isFirstSync = get().items.length === 0;
       const newToNotify: { title: string; courseName: string; courseId: number; lmsItemId: string }[] = [];
 
       for (const a of assignments) {
         const existing = get().items.find((i) => i.moodleId === a.id && i.type === 'assignment');
-        const status = computeStatus(a.duedate);
+        const moodleSubmissionStatus = submissionStatusMap.get(a.id);
+        const status = computeStatus(a.duedate, moodleSubmissionStatus);
         const dueDate = a.duedate ? new Date(a.duedate * 1000).toISOString() : null;
         const courseName = courseNameMap.get(a.course) || '';
 
-        const attachments: LmsAttachment[] = (a.introattachments ?? []).map((att) => ({
+        const fileAttachments: LmsAttachment[] = (a.introattachments ?? []).map((att) => ({
           filename: att.filename,
           fileurl: att.fileurl.includes('token=')
             ? att.fileurl
             : `${att.fileurl}${att.fileurl.includes('?') ? '&' : '?'}token=${creds.token}`,
           filesize: att.filesize,
           mimetype: att.mimetype,
+          type: 'file' as const,
         }));
+        const linkAttachments = a.intro ? extractLinksFromHtml(a.intro) : [];
+        const attachments: LmsAttachment[] = [...fileAttachments, ...linkAttachments];
 
         const description = a.intro?.replace(/<[^>]*>/g, '') || null;
-        const maxGrade = a.grade?.toString() || null;
         const attachmentsJson = JSON.stringify(attachments);
+
+        // Parse file submission config from assignment configs
+        const fileConfigs = (a.configs ?? []).filter((c) => c.plugin === 'file' && c.subtype === 'assignsubmission');
+        const isFileEnabled = fileConfigs.find((c) => c.name === 'enabled')?.value === '1';
+        const submissionConfig: SubmissionConfig | null = isFileEnabled ? {
+          maxFiles: parseInt(fileConfigs.find((c) => c.name === 'maxfilesubmissions')?.value ?? '1'),
+          maxSizeBytes: parseInt(fileConfigs.find((c) => c.name === 'maxsubmissionsizebytes')?.value ?? '0'),
+          allowedTypes: (fileConfigs.find((c) => c.name === 'filetypeslist')?.value ?? '')
+            .split(',').map((s) => s.trim()).filter(Boolean),
+        } : null;
+        const submissionConfigJson = submissionConfig ? JSON.stringify(submissionConfig) : null;
+
+        // Grade info for this assignment (matched by name)
+        const gradeKey = `${a.course}:${a.name}`;
+        const gradeInfo = gradeMap.get(gradeKey);
+        const maxGrade = gradeInfo?.maxGrade ?? a.grade?.toString() ?? null;
+        const gradeValue = gradeInfo?.grade ?? null;
+
+        // Determine final status — trust fresh Moodle data; only preserve local state if API failed
+        const hasFreshData = submissionStatusMap.has(a.id);
+        let finalStatus: 'upcoming' | 'overdue' | 'submitted' | 'graded' = hasFreshData
+          ? status
+          : (existing?.status === 'submitted' || existing?.status === 'graded')
+            ? existing.status
+            : status;
+        // If there's a real grade, promote to graded
+        if (gradeValue !== null) finalStatus = 'graded';
 
         if (existing) {
           await db.update(lmsItems).set({
             title: a.name,
             description,
             dueDate,
+            grade: gradeValue ?? existing.grade,
             maxGrade,
-            status,
+            status: finalStatus,
             courseName,
             attachments: attachmentsJson,
+            submissionConfig: submissionConfigJson,
             syncedAt: now,
-          }).where(eq(lmsItems.id, existing.id));
+          } as any).where(eq(lmsItems.id, existing.id));
         } else {
           const id = randomUUID();
           await db.insert(lmsItems).values({
@@ -281,14 +375,15 @@ export const useLmsStore = create<LmsState>((set, get) => ({
             title: a.name,
             description,
             dueDate,
-            grade: null,
+            grade: gradeValue,
             maxGrade,
-            status,
+            status: finalStatus,
             isDone: false,
             reminderSettings: null,
             attachments: attachmentsJson,
+            submissionConfig: submissionConfigJson,
             syncedAt: now,
-          });
+          } as any);
 
           if (!isFirstSync && status === 'upcoming') {
             newToNotify.push({ title: a.name, courseName, courseId: a.course, lmsItemId: id });
@@ -450,6 +545,34 @@ export const useLmsStore = create<LmsState>((set, get) => ({
       set((state) => ({
         items: state.items.map((i) => (i.id === itemId ? { ...i, isDone: !isDone } : i)),
       }));
+    }
+  },
+
+  markAsSubmitted: async (itemId) => {
+    set((state) => ({
+      items: state.items.map((i) => (i.id === itemId ? { ...i, status: 'submitted' } : i)),
+    }));
+    try {
+      await db.update(lmsItems).set({ status: 'submitted' }).where(eq(lmsItems.id, itemId));
+    } catch (err) {
+      console.error('[LMS] Failed to persist submitted status:', err);
+    }
+  },
+
+  markAsUnsubmitted: async (itemId) => {
+    const item = get().items.find((i) => i.id === itemId);
+    if (!item) return;
+    const newStatus = computeStatus(
+      item.dueDate ? Math.floor(new Date(item.dueDate).getTime() / 1000) : null,
+      undefined,
+    );
+    set((state) => ({
+      items: state.items.map((i) => (i.id === itemId ? { ...i, status: newStatus } : i)),
+    }));
+    try {
+      await db.update(lmsItems).set({ status: newStatus }).where(eq(lmsItems.id, itemId));
+    } catch (err) {
+      console.error('[LMS] Failed to persist unsubmitted status:', err);
     }
   },
 

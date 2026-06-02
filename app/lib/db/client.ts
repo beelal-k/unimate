@@ -137,6 +137,7 @@ const COMPAT_COLUMNS = [
   `ALTER TABLE lms_items ADD COLUMN user_id TEXT NOT NULL DEFAULT 'unknown'`,
   `ALTER TABLE lms_items ADD COLUMN is_done INTEGER DEFAULT 0`,
   `ALTER TABLE lms_items ADD COLUMN reminder_settings TEXT`,
+  `ALTER TABLE lms_items ADD COLUMN submission_config TEXT`,
 ];
 
 export async function initializeDatabase(): Promise<void> {

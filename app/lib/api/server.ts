@@ -4,7 +4,6 @@
 import { getMoodleToken, getMoodleDomain } from '../session';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
-console.log("BASE_URL",BASE_URL)
 
 export interface JobResponse {
   jobId: string;
