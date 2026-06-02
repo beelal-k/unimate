@@ -1,66 +1,100 @@
-# 🎓 UniMate
+# UniMate
 
-*Note: This application was 100% vibe coded. ✨*
-
-UniMate is an all-in-one open-source companion app designed to help students organize their academic life. It brings together your class schedule, offline files, AI assistance, and automatic Moodle LMS assignment tracking into one beautiful, native mobile experience.
+A student companion app that actually does what it says. Tracks your Moodle assignments, keeps your class schedule, manages offline files, and has an AI chat for when you're stuck. Built with React Native because apparently we're doing that now.
 
 ---
 
-## 🚀 Features
-* **📅 Smart Schedule:** A horizontally-scrolling, beautiful weekly grid with automated push notifications before your classes start.
-* **📚 Moodle Sync:** Connect your university Moodle account to automatically pull down upcoming assignments, grades, and offline reading materials.
-* **📂 Local File Manager:** Keep your PDFs, slides, and images in one place with instant search and sorting.
-* **🤖 AI Companion:** Stuck on a concept? Attach your course materials and chat with Gemini for instant, context-aware help.
+## Stack
 
-## 🛠️ Tech Stack
-This project is built using modern tooling for cross-platform performance and offline-first reliability:
-* **Framework:** [React Native](https://reactnative.dev/) with [Expo](https://expo.dev/)
-* **Routing:** Expo Router
-* **State Management:** Zustand
-* **Database:** SQLite (local persistence) with Drizzle ORM
-* **Styling & Animations:** NativeWind / UI Reanimated
-* **AI Engine:** Google Gemini (`@google/genai`)
+- **React Native + Expo SDK 55** — managed workflow, EAS builds
+- **Expo Router** — file-based navigation
+- **Zustand** — state management
+- **SQLite + Drizzle ORM** — local-first persistence
+- **Turso (libSQL)** — remote sync for schedule and assignments
+- **NativeWind** — Tailwind CSS in React Native, works better than expected
+- **PostHog** — feature flags, used for OTA update notifications
+- **Reanimated + Gesture Handler** — animations
 
-## 💻 Local Setup & Development
+---
 
-### 1. Prerequisites
-Ensure you have the following installed on your machine:
-* [Node.js](https://nodejs.org/en/) (v18 or newer recommended)
-* Git
-* An iOS Simulator (via Xcode) or Android Emulator (via Android Studio), or the [Expo Go](https://expo.dev/client) app on your physical device.
+## Local Setup
 
-### 2. Installation
-Clone the repository and install the dependencies:
+### Prerequisites
+
+- Node.js 18+
+- Expo CLI: `npm install -g expo-cli`
+- For Android: Android Studio with an emulator, or a physical device
+- For iOS: Xcode (Mac only)
+
+### Install
+
 ```bash
-git clone https://github.com/your-username/unimate.git
-cd unimate
+git clone https://github.com/beelal-k/unimate.git
+cd unimate/app
 npm install
 ```
 
-### 3. Environment Variables
-To enable the AI Chat, you will need a Google Gemini API key.
-1. Create a `.env` file in the root directory.
-2. Add your API key:
+### Environment Variables
+
+Create a `.env` file in the `app/` directory. All `EXPO_PUBLIC_` vars are inlined by Metro at bundle time so they're available on the client.
+
 ```env
-EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key_here
+# Turso — remote database sync. Get these from your Turso project dashboard.
+EXPO_PUBLIC_TURSO_URL=libsql://your-db.turso.io
+EXPO_PUBLIC_TURSO_AUTH_TOKEN=your-turso-auth-token
+
+# PostHog — update notifications via feature flags. Optional in dev.
+EXPO_PUBLIC_POSTHOG_KEY=phc_your_key_here
+
+# APK fallback URL if the direct download fails (e.g. your GitHub releases page)
+EXPO_PUBLIC_APK_FALLBACK_URL=https://github.com/beelal-k/unimate/releases
+
+# Gemini API key — only needed if you're working on the AI chat feature
+EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key
 ```
 
-### 4. Running the App
-Start the Expo development server:
+The app works without most of these in dev — Turso sync will be disabled, PostHog will be a no-op, and the AI chat is commented out. You really only need the Turso ones if you're touching sync.
+
+### Run
+
 ```bash
 npx expo start
 ```
-From the terminal menu, you can press:
-- `i` to open in the iOS Simulator.
-- `a` to open in the Android Emulator.
-- Or scan the QR code with the Expo Go app on your phone.
+
+Press `a` for Android emulator, `i` for iOS simulator. Scan the QR code with [Expo Go](https://expo.dev/client) if you're on a physical device.
 
 ---
 
-## 🤝 Contributing
-Contributions are always welcome! Whether it's adding new features, fixing bugs, or improving UI/UX. 
-1. Fork the project.
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`).
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4. Push to the branch (`git push origin feature/AmazingFeature`).
-5. Open a Pull Request!
+## Building
+
+Builds are handled by EAS. The CI pipeline runs automatically on every push to `master` that touches `app/` — it bumps the patch version, builds an Android APK, uploads it to GitHub Releases, and updates the PostHog feature flag so existing users get notified.
+
+To build manually:
+
+```bash
+eas build -p android --profile preview --non-interactive
+```
+
+You'll need an `EXPO_TOKEN` for this. The `eas.json` has a `preview` profile configured for APK output.
+
+---
+
+## Project Structure
+
+```
+app/
+  app/           # Expo Router screens ((tabs), (auth), (modals))
+  components/    # UI components, grouped by feature
+  lib/
+    api/         # Moodle API client
+    db/          # Drizzle schema, migrations, Turso sync
+    services/    # APK update service, notifications, background sync
+    store/       # Zustand stores (schedule, LMS, files, friends, etc.)
+    session.ts   # SecureStore helpers for user identity
+```
+
+---
+
+## Contributing
+
+Fork, branch off `master`, PR back. Keep commits scoped — the version bump in CI is fully automated so don't bump `package.json` manually or the pipeline will loop.
