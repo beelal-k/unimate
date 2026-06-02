@@ -1,0 +1,52 @@
+name: Update PostHog Flag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.0.3)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes shown in the update prompt'
+        required: false
+        default: 'Bug fixes and improvements.'
+        type: string
+
+jobs:
+  update-flag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚩 Update PostHog feature flag
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/app-preview.apk"
+
+          BODY=$(jq -n \
+            --arg version "${{ inputs.version }}" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg notes "${{ inputs.release_notes }}" \
+            '{
+              active: true,
+              filters: {
+                groups: [{ properties: [], rollout_percentage: 100 }],
+                payloads: {
+                  "true": ({ latest_version: $version, download_url: $url, release_notes: $notes } | tojson)
+                }
+              }
+            }')
+
+          HTTP_CODE=$(curl -s -o /tmp/posthog_response.json -w "%{http_code}" \
+            -X PATCH "https://us.posthog.com/api/projects/${{ secrets.POSTHOG_PROJECT_ID }}/feature_flags/${{ secrets.POSTHOG_FLAG_ID }}/" \
+            -H "Authorization: Bearer ${{ secrets.POSTHOG_PERSONAL_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY")
+
+          echo "PostHog API response: $HTTP_CODE"
+          cat /tmp/posthog_response.json
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::PostHog flag update failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "✅ Flag updated — v${{ inputs.version }} is now live at 100% rollout."

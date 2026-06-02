@@ -100,14 +100,36 @@ jobs:
       - name: 🚩 Update PostHog feature flag
         run: |
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.APP_VERSION }}/app-preview.apk"
-          PAYLOAD=$(printf '{"latest_version":"%s","download_url":"%s","release_notes":"%s"}' \
-            "${{ env.APP_VERSION }}" \
-            "$DOWNLOAD_URL" \
-            "Update to v${{ env.APP_VERSION }}. See release notes on GitHub.")
-          curl -s -X PATCH "https://us.posthog.com/api/projects/${{ secrets.POSTHOG_PROJECT_ID }}/feature_flags/${{ secrets.POSTHOG_FLAG_ID }}/" \
+
+          # Build the full PATCH body with jq to avoid shell escaping issues.
+          # groups[].rollout_percentage must be 100 or the flag returns false for all users.
+          BODY=$(jq -n \
+            --arg version "${{ env.APP_VERSION }}" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg notes "Update to v${{ env.APP_VERSION }}. See release notes on GitHub." \
+            '{
+              active: true,
+              filters: {
+                groups: [{ properties: [], rollout_percentage: 100 }],
+                payloads: {
+                  "true": ({ latest_version: $version, download_url: $url, release_notes: $notes } | tojson)
+                }
+              }
+            }')
+
+          HTTP_CODE=$(curl -s -o /tmp/posthog_response.json -w "%{http_code}" \
+            -X PATCH "https://us.posthog.com/api/projects/${{ secrets.POSTHOG_PROJECT_ID }}/feature_flags/${{ secrets.POSTHOG_FLAG_ID }}/" \
             -H "Authorization: Bearer ${{ secrets.POSTHOG_PERSONAL_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{\"active\":true,\"filters\":{\"payloads\":{\"true\":$(echo $PAYLOAD | jq -R '.')}}}"
+            -d "$BODY")
+
+          echo "PostHog API response: $HTTP_CODE"
+          cat /tmp/posthog_response.json
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::PostHog flag update failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
 
       - name: 💾 Commit version bump
         run: |
