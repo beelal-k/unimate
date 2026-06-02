@@ -1,5 +1,4 @@
 import * as FileSystem from 'expo-file-system';
-import * as IntentLauncher from 'expo-intent-launcher';
 import * as Linking from 'expo-linking';
 import { Alert } from 'react-native';
 import Constants from 'expo-constants';
@@ -19,6 +18,9 @@ export async function downloadAndInstallApk(
     const contentUri = await FileSystem.getContentUriAsync(uri);
 
     try {
+      // Lazy import: expo-intent-launcher is Android-only and only needed at this call site.
+      // Top-level import would crash the app on startup if the native module is unavailable.
+      const IntentLauncher = require('expo-intent-launcher') as typeof import('expo-intent-launcher');
       await IntentLauncher.startActivityAsync('android.intent.action.INSTALL_PACKAGE', {
         data: contentUri,
         flags: 1, // FLAG_GRANT_READ_URI_PERMISSION

@@ -60,8 +60,6 @@ module.exports = {
             typedRoutes: true
         },
         extra: {
-            tursoUrl: process.env.TURSO_URL,
-            tursoToken: process.env.TURSO_AUTH_TOKEN,
             posthogKey: process.env.EXPO_PUBLIC_POSTHOG_KEY,
             apkFallbackUrl: process.env.EXPO_PUBLIC_APK_FALLBACK_URL,
             eas: {
