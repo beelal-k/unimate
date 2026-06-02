@@ -1,0 +1,34 @@
+name: Commit Version Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to commit (e.g. 1.0.4)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply version to package.json
+        run: |
+          jq --arg v "${{ inputs.version }}" '.version = $v' app/package.json > /tmp/pkg.json
+          mv /tmp/pkg.json app/package.json
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/package.json
+          git commit -m "chore: bump version to v${{ inputs.version }} [skip ci]"
+          git push
