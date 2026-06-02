@@ -28,6 +28,7 @@ module.exports = {
         android: {
             adaptiveIcon: {
                 foregroundImage: './assets/android-icon-foreground.png',
+                monochromeImage: './assets/android-icon-monochrome.png',
                 backgroundColor: '#ffffff'
             },
             package: 'com.beelal.unimate',
