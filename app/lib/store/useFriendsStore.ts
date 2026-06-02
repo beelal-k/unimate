@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { queryTurso } from '../db/turso';
-import * as SecureStore from 'expo-secure-store';
+import { getUserId, getFullname } from '../session';
 import { randomUUID } from 'expo-crypto';
 import { db } from '../db/client';
 import { classes } from '../db/schema';
@@ -114,8 +114,8 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   },
 
   sendRequest: async (toUserId, toFullname) => {
-    const myId = await SecureStore.getItemAsync('user_id');
-    const myName = (await SecureStore.getItemAsync('user_fullname')) || 'Unknown User';
+    const myId = await getUserId();
+    const myName = (await getFullname()) || 'Unknown User';
     if (!myId) throw new Error('Not logged in');
     if (myId === toUserId) throw new Error('Cannot send a request to yourself');
 
@@ -128,7 +128,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   },
 
   loadIncoming: async () => {
-    const myId = await SecureStore.getItemAsync('user_id');
+    const myId = await getUserId();
     if (!myId) return;
 
     try {
@@ -145,7 +145,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   },
 
   loadFriends: async () => {
-    const myId = await SecureStore.getItemAsync('user_id');
+    const myId = await getUserId();
     if (!myId) return;
 
     try {

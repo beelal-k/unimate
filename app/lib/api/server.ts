@@ -1,7 +1,7 @@
 // lib/api/server.ts
 // Client for the UniMate FastAPI backend
 
-import * as SecureStore from 'expo-secure-store';
+import { getMoodleToken, getMoodleDomain } from '../session';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 console.log("BASE_URL",BASE_URL)
@@ -18,8 +18,8 @@ export interface JobResponse {
 }
 
 async function apiCall(endpoint: string, options: RequestInit = {}) {
-  const moodleToken = await SecureStore.getItemAsync('moodle_token');
-  const moodleDomain = await SecureStore.getItemAsync('moodle_domain');
+  const moodleToken = await getMoodleToken();
+  const moodleDomain = await getMoodleDomain();
 
   if (!moodleToken || !moodleDomain) {
     throw new Error('Missing Moodle credentials for server authentication');

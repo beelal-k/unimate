@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { Home, Calendar, BookOpen, FolderOpen } from 'lucide-react-native';
 import { Springs } from '../../lib/theme';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useLmsStore } from '../../lib/store/useLmsStore';
 
 // Height of the interactive row (icons + labels), excluding the bottom safe-area inset.
 const TAB_BAR_CONTENT_HEIGHT = 58;
@@ -31,11 +32,13 @@ function TabItem({
   Icon,
   isActive,
   onPress,
+  badge,
 }: {
   label: string;
   Icon: typeof Home;
   isActive: boolean;
   onPress: () => void;
+  badge?: boolean;
 }) {
   const dotScale = useSharedValue(isActive ? 1 : 0);
   const pressScale = useSharedValue(1);
@@ -70,7 +73,21 @@ function TabItem({
       style={{ flex: 1, alignItems: 'center', paddingTop: 8 }}
     >
       <Animated.View style={[{ alignItems: 'center', gap: 4 }, pressStyle]}>
-        <Icon size={24} color={color} strokeWidth={isActive ? 2.2 : 1.8} />
+        <View style={{ position: 'relative' }}>
+          <Icon size={24} color={color} strokeWidth={isActive ? 2.2 : 1.8} />
+          {badge && (
+            <View style={{
+              position: 'absolute', top: -4, right: -6,
+              minWidth: 16, height: 16, borderRadius: 8,
+              backgroundColor: '#EF4444',
+              borderWidth: 1.5, borderColor: '#FFFFFF',
+              alignItems: 'center', justifyContent: 'center',
+              paddingHorizontal: 2,
+            }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 10, fontFamily: 'Inter_700Bold', lineHeight: 12 }}>!</Text>
+            </View>
+          )}
+        </View>
         <Animated.View
           style={[
             {
@@ -98,13 +115,12 @@ function TabItem({
 }
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  // Build a set of currently active route names for highlighting
   const activeRouteName = state.routes[state.index]?.name;
-
-  // Reserve space for the device's bottom inset (Android nav buttons / iOS home indicator)
-  // so the tab content never sits under the system navigation bar.
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 10);
+
+  const { getOverdueAssignments } = useLmsStore();
+  const hasOverdue = getOverdueAssignments().length > 0;
 
   return (
     <View
@@ -145,6 +161,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             label={tab.label}
             Icon={tab.Icon}
             isActive={activeRouteName === tab.route}
+            badge={tab.route === 'lms' && hasOverdue}
             onPress={() => {
               const route = state.routes.find((r) => r.name === tab.route);
               if (route) {

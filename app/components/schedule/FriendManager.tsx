@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { Search, UserPlus, Check, X, Trash2, Users } from 'lucide-react-native';
-import * as SecureStore from 'expo-secure-store';
+import { getMoodleUsername } from '../../lib/session';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
@@ -26,7 +26,7 @@ export function FriendManager({ visible, onDismiss }: { visible: boolean; onDism
     if (visible) {
       loadIncoming();
       loadFriends();
-      SecureStore.getItemAsync('moodle_username').then(u => setMyUsername(u));
+      getMoodleUsername().then(u => setMyUsername(u));
     } else {
       setSearchId('');
       setSearchResult(null);

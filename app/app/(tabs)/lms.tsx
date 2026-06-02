@@ -184,11 +184,17 @@ export default function LmsScreen() {
           style={{
             paddingHorizontal: 12, paddingVertical: 6,
             borderRadius: 20, borderWidth: 1,
-            backgroundColor: filterMode === 'overdue' ? '#0A0A0A' : '#FAFAFA',
-            borderColor: filterMode === 'overdue' ? '#0A0A0A' : '#E4E4E4',
+            flexDirection: 'row', alignItems: 'center', gap: 5,
+            backgroundColor: filterMode === 'overdue' ? '#EF4444' : overdue.length > 0 ? '#FEF2F2' : '#FAFAFA',
+            borderColor: filterMode === 'overdue' ? '#EF4444' : overdue.length > 0 ? '#FECACA' : '#E4E4E4',
           }}
         >
-          <Text style={{ fontSize: 13, fontFamily: 'Inter_500Medium', color: filterMode === 'overdue' ? '#FFFFFF' : '#6E6E6E' }}>Overdue ({overdue.length})</Text>
+          {overdue.length > 0 && (
+            <Text style={{ fontSize: 13, fontFamily: 'Inter_700Bold', color: filterMode === 'overdue' ? '#FFFFFF' : '#EF4444', lineHeight: 18 }}>!</Text>
+          )}
+          <Text style={{ fontSize: 13, fontFamily: 'Inter_500Medium', color: filterMode === 'overdue' ? '#FFFFFF' : overdue.length > 0 ? '#EF4444' : '#6E6E6E' }}>
+            Overdue ({overdue.length})
+          </Text>
         </Pressable>
 
         <Pressable

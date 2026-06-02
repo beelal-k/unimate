@@ -3,7 +3,7 @@ import { syncQueue, classes, assignments, fileNodes, conversations, messages, se
 import { queryTurso } from './turso';
 import { randomUUID } from 'expo-crypto';
 import { eq } from 'drizzle-orm';
-import * as SecureStore from 'expo-secure-store';
+import { getUserId } from '../session';
 
 export type SyncOperation = 'insert' | 'update' | 'delete';
 
@@ -87,7 +87,7 @@ export async function enqueueSync(
   recordId: string,
   payload: Record<string, ScalarValue>,
 ): Promise<void> {
-  const userId = await SecureStore.getItemAsync('user_id');
+  const userId = await getUserId();
   if (!userId) return;
 
   const safePayload = filterPayload(tableName, payload);
@@ -165,7 +165,7 @@ export async function drainSyncQueue(): Promise<void> {
   const queue = await db.select().from(syncQueue);
   if (queue.length === 0) return;
 
-  const userId = await SecureStore.getItemAsync('user_id');
+  const userId = await getUserId();
   if (!userId) return;
 
   const slice = queue.slice(0, 20);

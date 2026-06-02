@@ -1,5 +1,4 @@
 // app/(tabs)/index.tsx
-// Dashboard — polished summary with alerts, next class, deadlines, schedule, quick actions
 
 import React, { useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
@@ -37,7 +36,7 @@ function getGreeting(): string {
 export default function DashboardScreen() {
   const router = useRouter();
   const { classes, loadClasses } = useScheduleStore();
-  const { items: lmsItems, loadItems: loadLms, getUpcomingAssignments, getOverdueAssignments } = useLmsStore();
+  const { items: lmsItems, loadItems: loadLms, getUpcomingAssignments } = useLmsStore();
   const { nodes, loadNodes } = useFilesStore();
   const { conversations, loadConversations } = useChatStore();
   const { hasUpdate } = useUpdateStore();
@@ -63,8 +62,6 @@ export default function DashboardScreen() {
   , [todaysClasses]);
 
   const upcomingDeadlines = useMemo(() => getUpcomingAssignments().slice(0, 5), [lmsItems]);
-  const overdueItems = useMemo(() => getOverdueAssignments(), [lmsItems]);
-
   // Assignments due within 24 hours
   const urgentDeadlines = useMemo(() => {
     const cutoff = Date.now() + 24 * 60 * 60 * 1000;
@@ -119,42 +116,9 @@ export default function DashboardScreen() {
             </View>
           </StaggeredItem>
 
-          {/* Alert Banner — Overdue */}
-          {overdueItems.length > 0 && (
-            <StaggeredItem index={1}>
-              <Pressable
-                onPress={() => router.push('/(tabs)/lms')}
-                style={{
-                  marginHorizontal: 20, marginTop: 8, marginBottom: 4,
-                  backgroundColor: '#FEE2E2', borderRadius: 14,
-                  paddingHorizontal: 16, paddingVertical: 14,
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  borderWidth: 1, borderColor: '#FECACA',
-                }}
-              >
-                <View style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  backgroundColor: '#DC2626',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <AlertTriangle size={18} color="#FFFFFF" strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#991B1B' }}>
-                    {overdueItems.length} overdue assignment{overdueItems.length > 1 ? 's' : ''}
-                  </Text>
-                  <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#B91C1C', marginTop: 1 }}>
-                    Tap to view in LMS
-                  </Text>
-                </View>
-                <ChevronRight size={18} color="#DC2626" strokeWidth={2} />
-              </Pressable>
-            </StaggeredItem>
-          )}
-
           {/* Alert Banner — Urgent (due within 24h) */}
           {urgentDeadlines.length > 0 && (
-            <StaggeredItem index={overdueItems.length > 0 ? 2 : 1}>
+            <StaggeredItem index={1}>
               <Pressable
                 onPress={() => router.push('/(tabs)/lms')}
                 style={{

@@ -15,7 +15,7 @@ import { Calendar, Plus, LayoutGrid, List, Users } from 'lucide-react-native';
 import { FriendManager } from '../../components/schedule/FriendManager';
 import { useFriendsStore } from '../../lib/store/useFriendsStore';
 import { mergeAndDeduplicateClasses } from '../../lib/store/useScheduleStore';
-import * as SecureStore from 'expo-secure-store';
+import { getFullname } from '../../lib/session';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -43,7 +43,7 @@ export default function ScheduleScreen() {
     loadClasses();
     loadFriends();
     loadIncoming();
-    SecureStore.getItemAsync('user_fullname').then(name => {
+    getFullname().then(name => {
       if (name) setMyInitials(name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase());
     });
   }, []);

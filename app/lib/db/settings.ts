@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import { getUserId } from '../session';
 import { eq, and } from 'drizzle-orm';
 import { db } from './client';
 import { settings } from './schema';
@@ -6,7 +6,7 @@ import { enqueueSync } from './sync';
 
 /** Persist a user setting to SQLite and enqueue a Turso sync. */
 export async function saveSetting(key: string, value: string): Promise<void> {
-  const userId = await SecureStore.getItemAsync('user_id');
+  const userId = await getUserId();
   if (!userId) return;
 
   await db
@@ -22,7 +22,7 @@ export async function saveSetting(key: string, value: string): Promise<void> {
 
 /** Read a user setting from SQLite. Returns null if not found. */
 export async function readSetting(key: string): Promise<string | null> {
-  const userId = await SecureStore.getItemAsync('user_id');
+  const userId = await getUserId();
   if (!userId) return null;
 
   const rows = await db

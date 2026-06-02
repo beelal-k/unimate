@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
+import { getUserId } from '../session';
 import { db } from '../db/client';
 import { enqueueSync } from '../db/sync';
-import { saveSetting } from '../db/settings';
-import { lmsItems, settings } from '../db/schema';
+import { saveSetting, readSetting } from '../db/settings';
+import { lmsItems } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'expo-crypto';
 import {
@@ -157,20 +157,19 @@ export const useLmsStore = create<LmsState>((set, get) => ({
   loadItems: async () => {
     try {
       set({ isLoading: true });
-      const rows = await db.select().from(lmsItems);
-      const settingsRows = await db.select().from(settings);
+      const [rows, pinnedStr, disabledStr, catsStr] = await Promise.all([
+        db.select().from(lmsItems),
+        readSetting('manuallyPinnedCourseIds'),
+        readSetting('manuallyDisabledCourseIds'),
+        readSetting('courseCategories'),
+      ]);
 
       let pinnedIds: string[] = [];
       let disabledIds: string[] = [];
       let cats: Record<string, 'active' | 'archived'> = {};
-
-      for (const r of settingsRows) {
-        try {
-          if (r.key === 'manuallyPinnedCourseIds') pinnedIds = JSON.parse(r.value) as string[];
-          if (r.key === 'manuallyDisabledCourseIds') disabledIds = JSON.parse(r.value) as string[];
-          if (r.key === 'courseCategories') cats = JSON.parse(r.value) as Record<string, 'active' | 'archived'>;
-        } catch {}
-      }
+      try { if (pinnedStr) pinnedIds = JSON.parse(pinnedStr) as string[]; } catch {}
+      try { if (disabledStr) disabledIds = JSON.parse(disabledStr) as string[]; } catch {}
+      try { if (catsStr) cats = JSON.parse(catsStr) as Record<string, 'active' | 'archived'>; } catch {}
 
       set({
         items: rows.map(rowToItem),
@@ -228,7 +227,7 @@ export const useLmsStore = create<LmsState>((set, get) => ({
       set({ courseCategories: newCourseCategories });
 
       const now = new Date().toISOString();
-      const userId = (await SecureStore.getItemAsync('user_id')) || 'unknown';
+      const userId = (await getUserId()) || 'unknown';
 
       await saveSetting('courseCategories', JSON.stringify(newCourseCategories));
       await saveSetting('lastSyncedAt', now);
@@ -437,12 +436,6 @@ export const useLmsStore = create<LmsState>((set, get) => ({
     try {
       await db.update(lmsItems).set({ isDone }).where(eq(lmsItems.id, itemId));
 
-      // Also update the assignments table if the item originated from there
-      try {
-        const { assignments } = await import('../db/schema');
-        await db.update(assignments).set({ isDone }).where(eq(assignments.id, itemId));
-      } catch {}
-
       const item = get().items.find((i) => i.id === itemId);
       if (isDone) {
         await getNotifications()?.cancelAssignmentReminders(itemId);
@@ -467,11 +460,6 @@ export const useLmsStore = create<LmsState>((set, get) => ({
 
     try {
       await db.update(lmsItems).set({ reminderSettings }).where(eq(lmsItems.id, itemId));
-
-      try {
-        const { assignments } = await import('../db/schema');
-        await db.update(assignments).set({ reminderSettings }).where(eq(assignments.id, itemId));
-      } catch {}
 
       const item = get().items.find((i) => i.id === itemId);
       if (item?.dueDate && !item.isDone) {

@@ -4,7 +4,7 @@ import { enqueueSync, pullFromTurso } from '../db/sync';
 import { classes } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
+import { getUserId } from '../session';
 
 function getNotifications() {
   try {
@@ -86,17 +86,18 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   loadClasses: async () => {
     try {
       set({ isLoading: true });
-      const userId = await SecureStore.getItemAsync('user_id');
+      const userId = await getUserId();
+      if (!userId) { set({ isLoading: false }); return; }
 
-      // If local DB is empty, pull from Turso first to hydrate it.
-      const localRows = await db.select().from(classes);
-      if (localRows.length === 0 && userId) {
+      // If local DB is empty for this user, pull from Turso first to hydrate it.
+      const localRows = await db.select().from(classes).where(eq(classes.userId, userId));
+      if (localRows.length === 0) {
         await pullFromTurso(userId).catch((err) =>
           console.warn('[Schedule] Turso pull failed, showing empty state:', err),
         );
       }
 
-      const rows = await db.select().from(classes);
+      const rows = await db.select().from(classes).where(eq(classes.userId, userId));
       set({ classes: rows.map(rowToClassItem), isLoading: false });
     } catch (err) {
       console.error('[Schedule] Failed to load classes:', err);
@@ -108,7 +109,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   addClass: async (data) => {
     const id = randomUUID();
     const now = new Date().toISOString();
-    const userId = await SecureStore.getItemAsync('user_id') || 'unknown';
+    const userId = await getUserId() || 'unknown';
 
     const payload = {
       id,

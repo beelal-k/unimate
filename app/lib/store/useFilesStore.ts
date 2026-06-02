@@ -4,7 +4,7 @@ import { enqueueSync } from '../db/sync';
 import { fileNodes } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
+import { getUserId } from '../session';
 
 export interface FileNode {
   id: string;
@@ -93,7 +93,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
   createFolder: async (name, parentId) => {
     const id = randomUUID();
     const now = new Date().toISOString();
-    const userId = (await SecureStore.getItemAsync('user_id')) || 'unknown';
+    const userId = (await getUserId()) || 'unknown';
 
     const payload = {
       id, userId, parentId, type: 'folder' as const, name,
@@ -134,7 +134,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     }
 
     try {
-      const userId = (await SecureStore.getItemAsync('user_id')) || 'unknown';
+      const userId = (await getUserId()) || 'unknown';
       const payload = {
         id, userId, parentId, type: 'file' as const, name, mimeType,
         localUri: destUri, sizeBytes: size,

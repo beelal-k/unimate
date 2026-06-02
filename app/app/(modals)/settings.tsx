@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
+import { getUserId, getFullname, getMoodleUsername, getMoodleDomain } from '../../lib/session';
 import { X, LogOut, RefreshCw, User, Database, ShieldCheck, Bell, ChevronRight, Download, CheckCircle } from 'lucide-react-native';
 import { signOutSequence, drainSyncQueue, pullFromTurso } from '../../lib/auth';
 import { useToast } from '../../components/ui/Toast';
@@ -33,9 +33,9 @@ export default function SettingsModal() {
 
   useEffect(() => {
     async function loadIdentity() {
-      const name = await SecureStore.getItemAsync('user_fullname') || 'Student';
-      const username = await SecureStore.getItemAsync('moodle_username') || '';
-      const domain = await SecureStore.getItemAsync('moodle_domain') || '';
+      const name = (await getFullname()) || 'Student';
+      const username = (await getMoodleUsername()) || '';
+      const domain = (await getMoodleDomain()) || '';
       setProfile({ name, username, domain });
     }
     loadIdentity();
@@ -44,7 +44,7 @@ export default function SettingsModal() {
   const handleManualSync = async () => {
     try {
       setIsSyncing(true);
-      const userId = await SecureStore.getItemAsync('user_id');
+      const userId = await getUserId();
       if (userId) {
         await drainSyncQueue();
         await pullFromTurso(userId);

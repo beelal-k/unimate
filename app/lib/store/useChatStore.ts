@@ -4,7 +4,7 @@ import { enqueueSync } from '../db/sync';
 import { conversations, messages } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { randomUUID } from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
+import { getUserId } from '../session';
 import {
   generateGeminiChat,
   buildSystemPrompt,
@@ -126,7 +126,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const id = randomUUID();
     const now = new Date().toISOString();
     const conv: Conversation = { id, title, createdAt: now, updatedAt: now };
-    const userId = (await SecureStore.getItemAsync('user_id')) || 'unknown';
+    const userId = (await getUserId()) || 'unknown';
 
     const payload = { id, userId, title, createdAt: now, updatedAt: now };
     await db.insert(conversations).values(payload);
@@ -185,7 +185,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const userMsgId = randomUUID();
     const now = new Date().toISOString();
-    const userId = (await SecureStore.getItemAsync('user_id')) ?? 'unknown';
+    const userId = (await getUserId()) ?? 'unknown';
 
     const userMsg: ChatMessage = {
       id: userMsgId,

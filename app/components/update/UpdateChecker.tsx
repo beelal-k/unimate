@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Alert, View, ActivityIndicator, Text, StyleSheet } from 'react-native';
-import { PostHogProvider, useFeatureFlag, useFeatureFlagPayload } from 'posthog-react-native';
+import { PostHogProvider, useFeatureFlagWithPayload } from 'posthog-react-native';
 import { compareVersions } from 'compare-versions';
 import Constants from 'expo-constants';
 import { useUpdateStore } from '../../lib/store/useUpdateStore';
@@ -13,8 +13,7 @@ type UpdatePayload = {
 };
 
 function UpdateFlagListener() {
-  const payload = useFeatureFlagPayload('app-latest-version') as UpdatePayload | undefined | null;
-  const isFlagActive = useFeatureFlag('app-latest-version');
+  const [isFlagActive, payload] = useFeatureFlagWithPayload('app-latest-version') as [boolean | string | undefined, UpdatePayload | undefined];
   const { setUpdateInfo, dismissUpdate, loadDismissedVersion, dismissedVersion, setIsDownloading, isDownloading } =
     useUpdateStore();
 
