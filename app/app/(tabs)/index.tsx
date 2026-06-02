@@ -299,7 +299,7 @@ export default function DashboardScreen() {
             <View style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 20 }}>
               <SectionHeader title="Quick Actions" />
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <QuickAction icon={<Sparkles size={20} color="#0A0A0A" strokeWidth={1.6} />} label="AI Chat" onPress={() => router.push('/(tabs)/chat')} />
+                {/*<QuickAction icon={<Sparkles size={20} color="#0A0A0A" strokeWidth={1.6} />} label="AI Chat" onPress={() => router.push('/(tabs)/chat')} />*/}
                 <QuickAction icon={<Upload size={20} color="#0A0A0A" strokeWidth={1.6} />} label="Upload" onPress={() => router.push('/(tabs)/files')} />
                 <QuickAction icon={<Plus size={20} color="#0A0A0A" strokeWidth={1.6} />} label="Add Class" onPress={() => router.push('/(modals)/add-class')} />
               </View>
