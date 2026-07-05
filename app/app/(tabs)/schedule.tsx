@@ -1,17 +1,21 @@
 // app/(tabs)/schedule.tsx
 // Schedule screen with weekly grid and list views
 
-import React, { useEffect, useCallback, useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { AnimatedScreen } from '../../components/ui/AnimatedScreen';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonList } from '../../components/ui/Skeleton';
+import { BottomSheet } from '../../components/ui/BottomSheet';
+import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
+import { useToast } from '../../components/ui/Toast';
 import { ClassCard } from '../../components/schedule/ClassCard';
 import { WeeklyGrid } from '../../components/schedule/WeeklyGrid';
 import { useScheduleStore } from '../../lib/store/useScheduleStore';
-import { Calendar, Plus, LayoutGrid, List, Users } from 'lucide-react-native';
+import { Calendar, Plus, LayoutGrid, List, Users, Download, Eye, EyeOff } from 'lucide-react-native';
 import { FriendManager } from '../../components/schedule/FriendManager';
 import { useFriendsStore } from '../../lib/store/useFriendsStore';
 import { mergeAndDeduplicateClasses } from '../../lib/store/useScheduleStore';
@@ -29,11 +33,20 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function ScheduleScreen() {
   const router = useRouter();
-  const { classes: myClasses, isLoading, viewMode, setViewMode, loadClasses } = useScheduleStore();
+  const { classes: myClasses, isLoading, viewMode, setViewMode, loadClasses, importFromPortal } = useScheduleStore();
   const { friends, friendClasses, visibleFriendIds, toggleFriendVisibility, loadFriends, loadIncoming, incoming } = useFriendsStore();
+  const { showToast } = useToast();
 
   const [showFriends, setShowFriends] = useState(false);
   const [myInitials, setMyInitials] = useState('Me');
+
+  const [showPortalSheet, setShowPortalSheet] = useState(false);
+  const [studentId, setStudentId] = useState('');
+  const [portalPassword, setPortalPassword] = useState('');
+  const [showPortalPassword, setShowPortalPassword] = useState(false);
+  const [isImportingPortal, setIsImportingPortal] = useState(false);
+  const [importPhase, setImportPhase] = useState('');
+  const portalPasswordRef = useRef<TextInput>(null);
 
   const fabScale = useSharedValue(1);
   const gridOpacity = useSharedValue(1);
@@ -92,6 +105,53 @@ export default function ScheduleScreen() {
     router.push('/(modals)/add-class');
   }, [router]);
 
+  const handleOpenPortalImport = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowPortalSheet(true);
+  }, []);
+
+  const handleTogglePortalPasswordVisibility = useCallback(() => {
+    // Toggling secureTextEntry while focused causes native flicker/lag on both
+    // platforms; blurring first and refocusing after avoids it (only when it was
+    // actually focused, so this never steals focus unexpectedly).
+    const input = portalPasswordRef.current;
+    const wasFocused = input?.isFocused() ?? false;
+    if (wasFocused) input?.blur();
+    setShowPortalPassword((prev) => !prev);
+    if (wasFocused) {
+      requestAnimationFrame(() => input?.focus());
+    }
+  }, []);
+
+  const handleImportFromPortal = useCallback(async () => {
+    if (!studentId.trim() || !portalPassword.trim()) {
+      showToast('Enter your UMT student ID and password', 'error');
+      return;
+    }
+    setIsImportingPortal(true);
+    try {
+      const { imported, skipped } = await importFromPortal(
+        studentId.trim(),
+        portalPassword,
+        setImportPhase,
+      );
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast(
+        skipped > 0 ? `Imported ${imported} classes, ${skipped} already existed` : `Imported ${imported} classes`,
+        'success',
+      );
+      setShowPortalSheet(false);
+      setStudentId('');
+      setPortalPassword('');
+    } catch (error: any) {
+      showToast(error.message || 'Failed to import from UMT portal', 'error');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsImportingPortal(false);
+      setImportPhase('');
+    }
+  }, [studentId, portalPassword, importFromPortal]);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
       <AnimatedScreen>
@@ -120,6 +180,21 @@ export default function ScheduleScreen() {
 
             {classes.length > 0 && (
               <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  onPress={handleOpenPortalImport}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: '#E4E4E4',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Download size={20} color="#0A0A0A" strokeWidth={1.8} />
+                </Pressable>
+
                 <Pressable
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -214,6 +289,8 @@ export default function ScheduleScreen() {
                 description="Add your class schedule to get reminders and see your weekly timetable."
                 actionLabel="Add Your First Class"
                 onAction={handleAddClass}
+                secondaryActionLabel="Import from UMT Portal"
+                onSecondaryAction={handleOpenPortalImport}
               />
             </ScrollView>
           ) : (
@@ -274,6 +351,52 @@ export default function ScheduleScreen() {
             <Plus size={24} color="#FFFFFF" strokeWidth={2} />
           </AnimatedPressable>
           <FriendManager visible={showFriends} onDismiss={() => setShowFriends(false)} />
+
+          {/* Import from UMT Portal Sheet */}
+          <BottomSheet
+            visible={showPortalSheet}
+            onDismiss={() => {
+              if (isImportingPortal) return;
+              setShowPortalSheet(false);
+            }}
+            snapPoint={0.55}
+          >
+            <View style={{ gap: 16 }}>
+              <Text style={{ fontSize: 18, fontFamily: 'Inter_600SemiBold', color: '#0A0A0A' }}>
+                Import from UMT Portal
+              </Text>
+              <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: '#6E6E6E' }}>
+                Log in with your UMT student portal credentials (not your Moodle login) to import your registered courses and timetable.
+              </Text>
+              <Input
+                label="Student ID"
+                value={studentId}
+                onChangeText={setStudentId}
+                placeholder="s2023065086"
+                autoCapitalize="none"
+                editable={!isImportingPortal}
+              />
+              <Input
+                ref={portalPasswordRef}
+                label="Password"
+                value={portalPassword}
+                onChangeText={setPortalPassword}
+                secureTextEntry={!showPortalPassword}
+                editable={!isImportingPortal}
+                rightAccessory={
+                  <Pressable onPress={handleTogglePortalPasswordVisibility} hitSlop={10}>
+                    {showPortalPassword ? <EyeOff size={20} color="#A0A0A0" /> : <Eye size={20} color="#6E6E6E" />}
+                  </Pressable>
+                }
+              />
+              {isImportingPortal && importPhase ? (
+                <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: '#6E6E6E', textAlign: 'center' }}>
+                  {importPhase}
+                </Text>
+              ) : null}
+              <Button title="Import" onPress={handleImportFromPortal} loading={isImportingPortal} fullWidth />
+            </View>
+          </BottomSheet>
         </View>
       </AnimatedScreen>
     </SafeAreaView>

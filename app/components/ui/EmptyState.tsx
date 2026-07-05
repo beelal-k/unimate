@@ -11,9 +11,19 @@ interface EmptyStateProps {
   description: string;
   actionLabel?: string;
   onAction?: () => void;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
 }
 
-export function EmptyState({ icon, title, description, actionLabel, onAction }: EmptyStateProps) {
+export function EmptyState({
+  icon,
+  title,
+  description,
+  actionLabel,
+  onAction,
+  secondaryActionLabel,
+  onSecondaryAction,
+}: EmptyStateProps) {
   return (
     <View
       style={{
@@ -51,6 +61,9 @@ export function EmptyState({ icon, title, description, actionLabel, onAction }: 
         <View style={{ marginTop: 8 }}>
           <Button title={actionLabel} onPress={onAction} variant="secondary" />
         </View>
+      )}
+      {secondaryActionLabel && onSecondaryAction && (
+        <Button title={secondaryActionLabel} onPress={onSecondaryAction} variant="ghost" />
       )}
     </View>
   );

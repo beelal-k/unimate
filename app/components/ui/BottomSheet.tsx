@@ -62,6 +62,11 @@ export function BottomSheet({
   }));
 
   const panGesture = Gesture.Pan()
+    // Without these, gesture-handler must wait to disambiguate every touch (including
+    // plain taps on nested TextInputs/Pressables) as "maybe a drag", delaying focus/press
+    // by ~1s. This lets small movements (<10px) resolve as taps immediately, while real
+    // drags still activate the sheet's open/close/expand behavior.
+    .activeOffsetY([-10, 10])
     .onChange((event) => {
       // Allow dragging downwards past 0, or dragging upwards with resistance
       if (event.translationY > 0) {

@@ -1,7 +1,7 @@
 // components/ui/Input.tsx
 // Outlined input with animated floating label, focus/error states
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, forwardRef } from 'react';
 import { TextInput, View, Text, TextInputProps, Pressable } from 'react-native';
 import * as Icons from 'lucide-react-native';
 import Animated, {
@@ -22,7 +22,10 @@ interface InputProps extends Omit<TextInputProps, 'style'> {
   onRightIconPress?: () => void;
 }
 
-export function Input({ label, error, value, onChangeText, rightAccessory, rightIcon, onRightIconPress, ...rest }: InputProps) {
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  { label, error, value, onChangeText, rightAccessory, rightIcon, onRightIconPress, ...rest },
+  ref,
+) {
   const [isFocused, setIsFocused] = useState(false);
   const focusAnim = useSharedValue(value ? 1 : 0);
   const borderAnim = useSharedValue(0);
@@ -86,36 +89,40 @@ export function Input({ label, error, value, onChangeText, rightAccessory, right
         >
           {label}
         </Animated.Text>
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          style={{
-            flex: 1,
-            height: '100%',
-            paddingLeft: 14,
-          paddingRight: (rightAccessory || rightIcon) ? 8 : 14,
-          fontSize: 15,
-          fontFamily: 'Inter_400Regular',
-          color: '#0A0A0A',
-        }}
-        placeholderTextColor="#A0A0A0"
-        {...rest}
-      />
-      {rightAccessory && (
-        <View style={{ paddingRight: 12 }}>{rightAccessory}</View>
-      )}
-      {RightIconComponent && (
-        <Pressable 
-          onPress={onRightIconPress} 
-          style={{ paddingRight: 14, paddingLeft: 4, height: '100%', justifyContent: 'center' }}
-          hitSlop={8}
-        >
-          <RightIconComponent size={20} color="#A0A0A0" />
-        </Pressable>
-      )}
-    </Animated.View>
+        {/* Clips input text/accessories to the rounded corners without clipping the floating label, which needs to escape the top edge to sit on the border. */}
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', height: '100%', borderRadius: 10, overflow: 'hidden' }}>
+          <TextInput
+            ref={ref}
+            value={value}
+            onChangeText={onChangeText}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            style={{
+              flex: 1,
+              height: '100%',
+              paddingLeft: 14,
+              paddingRight: (rightAccessory || rightIcon) ? 8 : 14,
+              fontSize: 15,
+              fontFamily: 'Inter_400Regular',
+              color: '#0A0A0A',
+            }}
+            placeholderTextColor="#A0A0A0"
+            {...rest}
+          />
+          {rightAccessory && (
+            <View style={{ paddingRight: 12 }}>{rightAccessory}</View>
+          )}
+          {RightIconComponent && (
+            <Pressable
+              onPress={onRightIconPress}
+              style={{ paddingRight: 14, paddingLeft: 4, height: '100%', justifyContent: 'center' }}
+              hitSlop={8}
+            >
+              <RightIconComponent size={20} color="#A0A0A0" />
+            </Pressable>
+          )}
+        </View>
+      </Animated.View>
       {error && (
         <Animated.Text
           style={{
@@ -131,4 +138,4 @@ export function Input({ label, error, value, onChangeText, rightAccessory, right
       )}
     </View>
   );
-}
+});

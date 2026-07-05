@@ -5,6 +5,7 @@ import { classes } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'expo-crypto';
 import { getUserId } from '../session';
+import { importSchedule } from '../api/umtPortal';
 
 function getNotifications() {
   try {
@@ -73,6 +74,26 @@ interface ScheduleState {
   addClass: (data: Omit<ClassItem, 'id' | 'createdAt'>) => Promise<ClassItem>;
   updateClass: (id: string, data: Partial<Omit<ClassItem, 'id' | 'createdAt'>>) => Promise<void>;
   deleteClass: (id: string) => Promise<void>;
+  importFromPortal: (
+    studentId: string,
+    password: string,
+    onProgress?: (phase: string) => void,
+  ) => Promise<{ imported: number; skipped: number }>;
+}
+
+/** Identifies a class by what it *is* (course + time slot), independent of its id, for dedup purposes. */
+export function classDedupeKey(cls: {
+  code: string | null;
+  name: string;
+  section: string | null;
+  daysOfWeek: number[];
+  startTime: string;
+  endTime: string;
+}): string {
+  const id = cls.code ? cls.code.toLowerCase().trim() : cls.name.toLowerCase().trim();
+  const section = cls.section?.toLowerCase().trim() ?? '';
+  const days = [...cls.daysOfWeek].sort((a, b) => a - b).join(',');
+  return `${id}|${section}|${cls.startTime}|${cls.endTime}|${days}`;
 }
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
@@ -192,6 +213,43 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       throw err;
     }
   },
+
+  importFromPortal: async (studentId, password, onProgress) => {
+    const parsedClasses = await importSchedule(studentId, password, onProgress);
+
+    onProgress?.('Adding classes…');
+    const existingKeys = new Set(get().classes.map((c) => classDedupeKey(c)));
+    let imported = 0;
+    let skipped = 0;
+
+    for (const item of parsedClasses) {
+      const key = classDedupeKey(item);
+      if (existingKeys.has(key)) {
+        skipped++;
+        continue;
+      }
+      existingKeys.add(key);
+
+      await get().addClass({
+        name: item.name,
+        code: item.code,
+        section: item.section,
+        room: item.room,
+        instructor: item.instructor,
+        color: '#0A0A0A',
+        daysOfWeek: item.daysOfWeek,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        notifyMinutesBefore: 15,
+        semesterStart: null,
+        semesterEnd: null,
+        isActive: true,
+      });
+      imported++;
+    }
+
+    return { imported, skipped };
+  },
 }));
 
 /** Merges and deduplicates classes from the current user and visible friends. */
@@ -224,17 +282,10 @@ export function mergeAndDeduplicateClasses(
     }
   }
 
-  const generateKey = (cls: ClassItem): string => {
-    const id = cls.code ? cls.code.toLowerCase().trim() : cls.name.toLowerCase().trim();
-    const section = cls.section?.toLowerCase().trim() ?? '';
-    const days = [...cls.daysOfWeek].sort((a, b) => a - b).join(',');
-    return `${id}|${section}|${cls.startTime}|${cls.endTime}|${days}`;
-  };
-
   const deduplicated = new Map<string, ClassItem>();
 
   for (const item of [...myItems, ...friendItems]) {
-    const key = generateKey(item);
+    const key = classDedupeKey(item);
     const existing = deduplicated.get(key);
 
     if (!existing) {
